@@ -462,3 +462,138 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+.page-container {
+  padding: 24px;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  margin-bottom: 6px;
+}
+
+.page-header p {
+  color: #666;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.history-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.history-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.history-card-header h3 {
+  margin: 0 0 5px;
+}
+
+.history-card-header p {
+  margin: 0;
+  color: #777;
+  font-size: 14px;
+}
+
+.history-badge {
+  background: #e8f5e9;
+  color: #2e7d32;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.history-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.history-item {
+  background: #f8fafc;
+  padding: 14px;
+  border-radius: 10px;
+}
+
+.history-item span {
+  display: block;
+  color: #777;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.history-item strong {
+  font-size: 15px;
+}
+
+.symptom-section,
+.notes-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #eee;
+}
+
+.symptom-section h4,
+.notes-section h4 {
+  margin-bottom: 10px;
+}
+
+.symptom-section p,
+.notes-section p {
+  margin: 6px 0;
+  color: #555;
+}
+
+.history-message {
+  background: white;
+  padding: 30px;
+  text-align: center;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  color: #666;
+}
+
+.history-error {
+  background: #fff1f2;
+  color: #b91c1c;
+  padding: 16px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 900px) {
+  .history-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .history-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .history-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-container {
+    padding: 16px;
+  }
+}
