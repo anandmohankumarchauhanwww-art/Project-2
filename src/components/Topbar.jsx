@@ -1,19 +1,46 @@
+import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
+
 function Topbar() {
+  const [studentName, setStudentName] = useState("Student");
+
+  useEffect(() => {
+    async function loadUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        return;
+      }
+
+      const name =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        user.email?.split("@")[0] ||
+        "Student";
+
+      setStudentName(name);
+    }
+
+    loadUser();
+  }, []);
+
+  const firstLetter = studentName.charAt(0).toUpperCase();
+
   return (
     <header className="topbar">
-      <div>
-        <span className="topbar-title">
-          Student Portal
-        </span>
+      <div className="topbar-title">
+        Student Portal
       </div>
 
       <div className="user-info">
         <div className="user-avatar">
-          A
+          {firstLetter}
         </div>
 
         <div>
-          <strong>Anand</strong>
+          <strong>{studentName}</strong>
           <span>Student</span>
         </div>
       </div>

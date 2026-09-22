@@ -7,22 +7,50 @@ function History() {
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    fetchHealthHistory();
+    loadHistory();
   }, []);
 
-  async function fetchHealthHistory() {
+  async function loadHistory() {
     setLoading(true);
     setErrorMessage("");
+
+    /*
+      Get the currently logged-in student
+    */
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setErrorMessage(
+        "Your session has expired. Please login again."
+      );
+
+      setLoading(false);
+      return;
+    }
+
+    /*
+      Get only this student's health records
+    */
 
     const { data, error } = await supabase
       .from("health_checkins")
       .select("*")
-      .eq("student_id", "SHIS-001")
-      .order("checkin_date", { ascending: false });
+      .eq("student_id", user.id)
+      .order("checkin_date", {
+        ascending: false,
+      });
 
     if (error) {
-      console.error("Error fetching health history:", error);
-      setErrorMessage("Could not load your health history.");
+      console.error(
+        "Error loading health history:",
+        error
+      );
+
+      setErrorMessage(error.message);
       setLoading(false);
       return;
     }
@@ -31,113 +59,144 @@ function History() {
     setLoading(false);
   }
 
-  return (
-    <div className="page-container">
-      <div className="page-header">
-        <h1>Health History</h1>
-        <p>View your previous health check-ins.</p>
-      </div>
-
-      {loading && (
+  if (loading) {
+    return (
+      <div className="page-container">
         <div className="history-message">
           Loading your health history...
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {errorMessage && (
+  if (errorMessage) {
+    return (
+      <div className="page-container">
         <div className="history-error">
-          {errorMessage}
-        </div>
-      )}
+          <strong>
+            Could not load your health history.
+          </strong>
 
-      {!loading && !errorMessage && records.length === 0 && (
+          <p>{errorMessage}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page-container">
+
+      <div className="page-header">
+        <h1>Health History</h1>
+
+        <p>
+          Look back at your previous check-ins
+          and notice changes over time.
+        </p>
+      </div>
+
+      {records.length === 0 ? (
         <div className="history-message">
-          No health check-ins found yet.
-        </div>
-      )}
+          <h3>No check-ins yet</h3>
 
-      {!loading && !errorMessage && records.length > 0 && (
+          <p>
+            Complete your first health check-in
+            and your history will appear here.
+          </p>
+        </div>
+      ) : (
         <div className="history-list">
+
           {records.map((record) => (
-            <div className="history-card" key={record.id}>
+            <div
+              className="history-card"
+              key={record.id}
+            >
+
               <div className="history-card-header">
+
                 <div>
                   <h3>
-                    Check-in:{" "}
-                    {new Date(
-                      record.checkin_date
-                    ).toLocaleDateString()}
+                    Health Check-in
                   </h3>
 
-                  <p>Student ID: {record.student_id}</p>
+                  <p>
+                    {record.checkin_date}
+                  </p>
                 </div>
 
-                <span className="history-badge">
+                <div className="history-badge">
                   Completed
-                </span>
+                </div>
+
               </div>
 
               <div className="history-grid">
+
                 <div className="history-item">
-                  <span>Sleep</span>
+                  <span>😴 Sleep</span>
                   <strong>
                     {record.sleep_hours ?? "—"} hours
                   </strong>
                 </div>
 
                 <div className="history-item">
-                  <span>Sleep Quality</span>
+                  <span>⭐ Sleep Quality</span>
                   <strong>
                     {record.sleep_quality ?? "—"}
                   </strong>
                 </div>
 
                 <div className="history-item">
-                  <span>Exercise</span>
+                  <span>🏃 Exercise</span>
                   <strong>
                     {record.exercise_days ?? "—"} days
                   </strong>
                 </div>
 
                 <div className="history-item">
-                  <span>Water Intake</span>
+                  <span>💧 Water</span>
                   <strong>
-                    {record.water_intake ?? "—"} L
+                    {record.water_intake ?? "—"} L/day
                   </strong>
                 </div>
 
                 <div className="history-item">
-                  <span>Energy</span>
+                  <span>⚡ Energy</span>
                   <strong>
                     {record.energy_level ?? "—"}
                   </strong>
                 </div>
 
                 <div className="history-item">
-                  <span>Stress</span>
+                  <span>🧠 Stress</span>
                   <strong>
                     {record.stress_level ?? "—"}
                   </strong>
                 </div>
 
                 <div className="history-item">
-                  <span>Mood</span>
+                  <span>😊 Mood</span>
                   <strong>
                     {record.mood ?? "—"}
                   </strong>
                 </div>
 
                 <div className="history-item">
-                  <span>Academic Pressure</span>
+                  <span>📚 Academic Pressure</span>
                   <strong>
                     {record.academic_pressure ?? "—"}
                   </strong>
                 </div>
+
               </div>
 
               {record.has_symptoms === "Yes" && (
                 <div className="symptom-section">
-                  <h4>Symptoms</h4>
+
+                  <h4>
+                    🩺 Symptoms
+                  </h4>
 
                   <p>
                     <strong>Frequency:</strong>{" "}
@@ -153,19 +212,30 @@ function History() {
                     <strong>Duration:</strong>{" "}
                     {record.symptom_duration ?? "—"}
                   </p>
+
                 </div>
               )}
 
               {record.notes && (
                 <div className="notes-section">
-                  <h4>Additional Notes</h4>
-                  <p>{record.notes}</p>
+
+                  <h4>
+                    💬 Notes
+                  </h4>
+
+                  <p>
+                    {record.notes}
+                  </p>
+
                 </div>
               )}
+
             </div>
           ))}
+
         </div>
       )}
+
     </div>
   );
 }

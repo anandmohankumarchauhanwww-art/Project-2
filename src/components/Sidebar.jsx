@@ -2,41 +2,58 @@ function Sidebar({ activePage, setActivePage }) {
   const menuItems = [
     {
       id: "dashboard",
-      label: "Dashboard",
       icon: "🏠",
+      label: "Dashboard",
     },
+
     {
       id: "profile",
-      label: "Student Profile",
       icon: "👤",
+      label: "Student Profile",
     },
+
+    {
+      id: "baseline",
+      icon: "📋",
+      label: "Health Baseline",
+    },
+
     {
       id: "checkin",
-      label: "Health Check-in",
       icon: "📝",
+      label: "Daily Check-in",
     },
+
     {
       id: "history",
-      label: "Health History",
       icon: "📊",
+      label: "Health History",
     },
+
     {
       id: "report",
-      label: "Monthly Report",
       icon: "📄",
+      label: "Monthly Report",
     },
   ];
 
   return (
     <aside className="sidebar">
+
+      {/* Brand */}
+
       <div className="brand">
-        <div className="brand-logo">❤</div>
+        <div className="brand-logo">
+          ❤️
+        </div>
 
         <div>
           <h2>SHIS</h2>
           <span>Student Health</span>
         </div>
       </div>
+
+      {/* Navigation */}
 
       <nav className="navigation">
         {menuItems.map((item) => (
@@ -47,16 +64,36 @@ function Sidebar({ activePage, setActivePage }) {
             }`}
             onClick={() => setActivePage(item.id)}
           >
-            <span>{item.icon}</span>
-            {item.label}
+            <span className="nav-icon">
+              {item.icon}
+            </span>
+
+            <span>
+              {item.label}
+            </span>
           </button>
         ))}
       </nav>
 
+      {/* Sidebar information */}
+
       <div className="sidebar-bottom">
-        <p>Project Version</p>
-        <strong>Day 2 Development</strong>
+
+        <div className="sidebar-status">
+          <span className="status-dot"></span>
+
+          <div>
+            <strong>System Active</strong>
+            <small>Health data protected</small>
+          </div>
+        </div>
+
+        <div className="sidebar-footer-text">
+          Student Health Intelligence System
+        </div>
+
       </div>
+
     </aside>
   );
 }
