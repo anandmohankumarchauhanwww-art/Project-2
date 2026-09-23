@@ -1,21 +1,13 @@
 import { useState } from "react";
+
 import { supabase } from "../lib/supabaseClient";
 
 function Login() {
   const [isSignup, setIsSignup] = useState(false);
 
-  // Login fields
+  // Account fields
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
-  // Student profile fields
-  const [fullName, setFullName] = useState("");
-  const [enrollmentNumber, setEnrollmentNumber] = useState("");
-  const [age, setAge] = useState("");
-  const [gender, setGender] = useState("");
-  const [program, setProgram] = useState("");
-  const [branch, setBranch] = useState("");
-  const [year, setYear] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -30,22 +22,10 @@ function Login() {
 
     try {
       if (isSignup) {
-        // Create new student account
-        const { error } = await supabase.auth.signUp({
+        // Create a new SHIS account
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
-
-          options: {
-            data: {
-              full_name: fullName,
-              enrollment_number: enrollmentNumber,
-              age: Number(age),
-              gender,
-              program,
-              branch,
-              year,
-            },
-          },
         });
 
         if (error) {
@@ -53,9 +33,15 @@ function Login() {
           return;
         }
 
-        setMessage(
-          "Account created successfully. Please check your email if verification is required."
-        );
+        if (data.session) {
+          setMessage(
+            "Account created successfully. Setting up your SHIS profile..."
+          );
+        } else {
+          setMessage(
+            "Account created successfully. Please check your email to verify your account."
+          );
+        }
       } else {
         // Login existing student
         const { error } =
@@ -71,7 +57,10 @@ function Login() {
       }
     } catch (error) {
       console.error(error);
-      setError("Something went wrong. Please try again.");
+
+      setError(
+        "Something went wrong. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -88,6 +77,7 @@ function Login() {
     <div className="login-page">
 
       {/* LEFT SIDE */}
+
       <div className="login-intro">
 
         <div className="login-brand">
@@ -98,6 +88,7 @@ function Login() {
 
           <div>
             <h2>SHIS</h2>
+
             <span>
               Student Health Intelligence System
             </span>
@@ -135,7 +126,8 @@ function Login() {
                 </strong>
 
                 <small>
-                  Share how you're doing in just a few moments.
+                  Share how you're doing in just a few
+                  moments.
                 </small>
               </div>
 
@@ -151,7 +143,8 @@ function Login() {
                 </strong>
 
                 <small>
-                  See how your sleep, stress and lifestyle change.
+                  See how your sleep, stress and
+                  lifestyle change.
                 </small>
               </div>
 
@@ -167,7 +160,8 @@ function Login() {
                 </strong>
 
                 <small>
-                  Your health records are linked to your account.
+                  Your health records are linked to
+                  your account.
                 </small>
               </div>
 
@@ -184,6 +178,7 @@ function Login() {
       </div>
 
       {/* RIGHT SIDE */}
+
       <div className="login-form-area">
 
         <div className="login-card">
@@ -196,13 +191,13 @@ function Login() {
 
             <h2>
               {isSignup
-                ? "Create your student account"
+                ? "Create your SHIS account"
                 : "Welcome back"}
             </h2>
 
             <p>
               {isSignup
-                ? "Tell us a little about yourself to get started."
+                ? "Start your wellbeing journey with a simple account."
                 : "Let's check in with your wellbeing."}
             </p>
 
@@ -222,203 +217,8 @@ function Login() {
 
           <form onSubmit={handleSubmit}>
 
-            {/* SIGNUP DETAILS */}
-            {isSignup && (
-              <>
-                <div className="signup-section-title">
-                  Personal information
-                </div>
-
-                <div className="login-field">
-
-                  <label htmlFor="fullName">
-                    Full name
-                  </label>
-
-                  <input
-                    id="fullName"
-                    type="text"
-                    value={fullName}
-                    onChange={(event) =>
-                      setFullName(event.target.value)
-                    }
-                    placeholder="Enter your full name"
-                    required
-                  />
-
-                </div>
-
-                <div className="login-field">
-
-                  <label htmlFor="enrollmentNumber">
-                    Enrollment number
-                  </label>
-
-                  <input
-                    id="enrollmentNumber"
-                    type="text"
-                    value={enrollmentNumber}
-                    onChange={(event) =>
-                      setEnrollmentNumber(event.target.value)
-                    }
-                    placeholder="e.g. 23BME001"
-                    required
-                  />
-
-                </div>
-
-                <div className="signup-two-column">
-
-                  <div className="login-field">
-
-                    <label htmlFor="age">
-                      Age
-                    </label>
-
-                    <input
-                      id="age"
-                      type="number"
-                      min="15"
-                      max="100"
-                      value={age}
-                      onChange={(event) =>
-                        setAge(event.target.value)
-                      }
-                      placeholder="e.g. 21"
-                      required
-                    />
-
-                  </div>
-
-                  <div className="login-field">
-
-                    <label htmlFor="gender">
-                      Gender
-                    </label>
-
-                    <select
-                      id="gender"
-                      value={gender}
-                      onChange={(event) =>
-                        setGender(event.target.value)
-                      }
-                      required
-                    >
-
-                      <option value="">
-                        Select
-                      </option>
-
-                      <option value="Male">
-                        Male
-                      </option>
-
-                      <option value="Female">
-                        Female
-                      </option>
-
-                      <option value="Non-binary">
-                        Non-binary
-                      </option>
-
-                      <option value="Prefer not to say">
-                        Prefer not to say
-                      </option>
-
-                    </select>
-
-                  </div>
-
-                </div>
-
-                <div className="signup-section-title">
-                  Academic information
-                </div>
-
-                <div className="signup-two-column">
-
-                  <div className="login-field">
-
-                    <label htmlFor="program">
-                      Program
-                    </label>
-
-                    <input
-                      id="program"
-                      type="text"
-                      value={program}
-                      onChange={(event) =>
-                        setProgram(event.target.value)
-                      }
-                      placeholder="e.g. B.Tech"
-                      required
-                    />
-
-                  </div>
-
-                  <div className="login-field">
-
-                    <label htmlFor="branch">
-                      Branch
-                    </label>
-
-                    <input
-                      id="branch"
-                      type="text"
-                      value={branch}
-                      onChange={(event) =>
-                        setBranch(event.target.value)
-                      }
-                      placeholder="e.g. Biomedical Engineering"
-                      required
-                    />
-
-                  </div>
-
-                </div>
-
-                <div className="login-field">
-
-                  <label htmlFor="year">
-                    Current year
-                  </label>
-
-                  <select
-                    id="year"
-                    value={year}
-                    onChange={(event) =>
-                      setYear(event.target.value)
-                    }
-                    required
-                  >
-
-                    <option value="">
-                      Select your year
-                    </option>
-
-                    <option value="1st Year">
-                      1st Year
-                    </option>
-
-                    <option value="2nd Year">
-                      2nd Year
-                    </option>
-
-                    <option value="3rd Year">
-                      3rd Year
-                    </option>
-
-                    <option value="4th Year">
-                      4th Year
-                    </option>
-
-                  </select>
-
-                </div>
-              </>
-            )}
-
             {/* EMAIL */}
+
             <div className="login-field">
 
               <label htmlFor="email">
@@ -439,6 +239,7 @@ function Login() {
             </div>
 
             {/* PASSWORD */}
+
             <div className="login-field">
 
               <label htmlFor="password">
@@ -458,6 +259,16 @@ function Login() {
               />
 
             </div>
+
+            {/* SIGNUP INFORMATION */}
+
+            {isSignup && (
+              <p className="signup-note">
+                After creating your account, we'll help
+                you complete your student profile and
+                wellbeing baseline.
+              </p>
+            )}
 
             <button
               type="submit"

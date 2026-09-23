@@ -26,9 +26,20 @@ function CheckIn() {
     dayRating: "",
   });
 
+  const [completed, setCompleted] = useState({
+    morning: false,
+    evening: false,
+    night: false,
+  });
+
+  const [editing, setEditing] = useState({
+    morning: false,
+    evening: false,
+    night: false,
+  });
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
 
   function getTodayDate() {
@@ -113,7 +124,33 @@ function CheckIn() {
       });
     }
 
+    setCompleted({
+      morning: Boolean(morning),
+      evening: Boolean(evening),
+      night: Boolean(night),
+    });
+
+    setEditing({
+      morning: false,
+      evening: false,
+      night: false,
+    });
+
     setLoading(false);
+  }
+
+  function changeCheckinType(type) {
+    setCheckinType(type);
+    setError("");
+  }
+
+  function startEditing() {
+    setEditing((previous) => ({
+      ...previous,
+      [checkinType]: true,
+    }));
+
+    setError("");
   }
 
   function handleMorningChange(event) {
@@ -124,7 +161,6 @@ function CheckIn() {
       [name]: value,
     }));
 
-    setSubmitted(false);
     setError("");
   }
 
@@ -136,7 +172,6 @@ function CheckIn() {
       [name]: value,
     }));
 
-    setSubmitted(false);
     setError("");
   }
 
@@ -148,7 +183,6 @@ function CheckIn() {
       [name]: value,
     }));
 
-    setSubmitted(false);
     setError("");
   }
 
@@ -156,7 +190,6 @@ function CheckIn() {
     event.preventDefault();
 
     setSaving(true);
-    setSubmitted(false);
     setError("");
 
     const {
@@ -193,7 +226,12 @@ function CheckIn() {
     if (error) {
       setError(error.message);
     } else {
-      setSubmitted(true);
+      setCompleted((previous) => ({
+        ...previous,
+        morning: true,
+      }));
+
+      setEditing(false);
     }
 
     setSaving(false);
@@ -203,7 +241,6 @@ function CheckIn() {
     event.preventDefault();
 
     setSaving(true);
-    setSubmitted(false);
     setError("");
 
     const {
@@ -249,7 +286,12 @@ function CheckIn() {
     if (error) {
       setError(error.message);
     } else {
-      setSubmitted(true);
+      setCompleted((previous) => ({
+        ...previous,
+        evening: true,
+      }));
+
+      setEditing(false);
     }
 
     setSaving(false);
@@ -259,7 +301,6 @@ function CheckIn() {
     event.preventDefault();
 
     setSaving(true);
-    setSubmitted(false);
     setError("");
 
     const {
@@ -303,17 +344,21 @@ function CheckIn() {
     if (error) {
       setError(error.message);
     } else {
-      setSubmitted(true);
+      setCompleted((previous) => ({
+        ...previous,
+        night: true,
+      }));
+
+      setEditing(false);
     }
 
     setSaving(false);
   }
 
-  function changeCheckinType(type) {
-    setCheckinType(type);
-    setSubmitted(false);
-    setError("");
-  }
+  const currentCompleted = completed[checkinType];
+  const currentEditing = editing[checkinType];
+
+  const fieldsDisabled = currentCompleted && !currentEditing;
 
   if (loading) {
     return (
@@ -346,7 +391,8 @@ function CheckIn() {
           }
           onClick={() => changeCheckinType("morning")}
         >
-          🌅 Morning
+          🌅 Morning{" "}
+          {completed.morning ? "✓" : ""}
         </button>
 
         <button
@@ -358,7 +404,8 @@ function CheckIn() {
           }
           onClick={() => changeCheckinType("evening")}
         >
-          🌆 Evening
+          🌆 Evening{" "}
+          {completed.evening ? "✓" : ""}
         </button>
 
         <button
@@ -370,7 +417,8 @@ function CheckIn() {
           }
           onClick={() => changeCheckinType("night")}
         >
-          🌙 Night
+          🌙 Night{" "}
+          {completed.night ? "✓" : ""}
         </button>
       </div>
 
@@ -395,12 +443,15 @@ function CheckIn() {
             </div>
 
             <div className="form-field">
-              <label>About how long did you sleep?</label>
+              <label>
+                About how long did you sleep?
+              </label>
 
               <select
                 name="sleepDuration"
                 value={morningData.sleepDuration}
                 onChange={handleMorningChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -430,12 +481,15 @@ function CheckIn() {
             </div>
 
             <div className="form-field">
-              <label>How was your sleep?</label>
+              <label>
+                How was your sleep?
+              </label>
 
               <select
                 name="sleepQuality"
                 value={morningData.sleepQuality}
                 onChange={handleMorningChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -462,12 +516,15 @@ function CheckIn() {
             </div>
 
             <div className="form-field">
-              <label>How rested do you feel?</label>
+              <label>
+                How rested do you feel?
+              </label>
 
               <select
                 name="restedFeeling"
                 value={morningData.restedFeeling}
                 onChange={handleMorningChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -493,21 +550,30 @@ function CheckIn() {
             </div>
           </div>
 
-          <div className="form-actions">
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={saving}
-            >
-              {saving
-                ? "Saving..."
-                : "Save Morning Check-in"}
-            </button>
-          </div>
+          {currentCompleted && !editing ? (
+            <div className="checkin-complete-box">
+              <strong>✅ Morning Check-in Complete</strong>
+              <span>Completed today</span>
 
-          {submitted && (
-            <div className="success-message">
-              ✅ Morning check-in saved.
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={startEditing}
+              >
+                Edit today's response
+              </button>
+            </div>
+          ) : (
+            <div className="form-actions">
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={saving}
+              >
+                {saving
+                  ? "Saving..."
+                  : "Save Morning Check-in"}
+              </button>
             </div>
           )}
 
@@ -540,12 +606,15 @@ function CheckIn() {
             </div>
 
             <div className="form-field">
-              <label>How has your mood been today?</label>
+              <label>
+                How has your mood been today?
+              </label>
 
               <select
                 name="mood"
                 value={eveningData.mood}
                 onChange={handleEveningChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -575,12 +644,15 @@ function CheckIn() {
             </div>
 
             <div className="form-field">
-              <label>How stressed have you felt today?</label>
+              <label>
+                How stressed have you felt today?
+              </label>
 
               <select
                 name="stressLevel"
                 value={eveningData.stressLevel}
                 onChange={handleEveningChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -616,6 +688,7 @@ function CheckIn() {
                 name="academicPressure"
                 value={eveningData.academicPressure}
                 onChange={handleEveningChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -630,12 +703,15 @@ function CheckIn() {
             </div>
 
             <div className="form-field">
-              <label>How was your energy today?</label>
+              <label>
+                How was your energy today?
+              </label>
 
               <select
                 name="energyLevel"
                 value={eveningData.energyLevel}
                 onChange={handleEveningChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -663,12 +739,15 @@ function CheckIn() {
             </div>
 
             <div className="form-field">
-              <label>How is your body feeling?</label>
+              <label>
+                How is your body feeling?
+              </label>
 
               <select
                 name="physicalDiscomfort"
                 value={eveningData.physicalDiscomfort}
                 onChange={handleEveningChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -694,21 +773,30 @@ function CheckIn() {
             </div>
           </div>
 
-          <div className="form-actions">
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={saving}
-            >
-              {saving
-                ? "Saving..."
-                : "Save Evening Check-in"}
-            </button>
-          </div>
+          {currentCompleted && !editing ? (
+            <div className="checkin-complete-box">
+              <strong>✅ Evening Check-in Complete</strong>
+              <span>Completed today</span>
 
-          {submitted && (
-            <div className="success-message">
-              ✅ Evening check-in saved.
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={startEditing}
+              >
+                Edit today's response
+              </button>
+            </div>
+          ) : (
+            <div className="form-actions">
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={saving}
+              >
+                {saving
+                  ? "Saving..."
+                  : "Save Evening Check-in"}
+              </button>
             </div>
           )}
 
@@ -750,6 +838,7 @@ function CheckIn() {
                 name="activityLevel"
                 value={nightData.activityLevel}
                 onChange={handleNightChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -780,6 +869,7 @@ function CheckIn() {
                 name="screenTime"
                 value={nightData.screenTime}
                 onChange={handleNightChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -826,6 +916,7 @@ function CheckIn() {
                 name="foodQuality"
                 value={nightData.foodQuality}
                 onChange={handleNightChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -859,6 +950,7 @@ function CheckIn() {
                 name="waterIntake"
                 value={nightData.waterIntake}
                 onChange={handleNightChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -904,6 +996,7 @@ function CheckIn() {
                 name="dayRating"
                 value={nightData.dayRating}
                 onChange={handleNightChange}
+                disabled={fieldsDisabled}
                 required
               >
                 <option value="">
@@ -933,21 +1026,30 @@ function CheckIn() {
             </div>
           </div>
 
-          <div className="form-actions">
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={saving}
-            >
-              {saving
-                ? "Saving..."
-                : "Save Night Check-in"}
-            </button>
-          </div>
+          {currentCompleted && !editing ? (
+            <div className="checkin-complete-box">
+              <strong>✅ Night Check-in Complete</strong>
+              <span>Completed today</span>
 
-          {submitted && (
-            <div className="success-message">
-              ✅ Night check-in saved. Good night! 🌙
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={startEditing}
+              >
+                Edit today's response
+              </button>
+            </div>
+          ) : (
+            <div className="form-actions">
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={saving}
+              >
+                {saving
+                  ? "Saving..."
+                  : "Save Night Check-in"}
+              </button>
             </div>
           )}
 

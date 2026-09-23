@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-function Baseline() {
+function Baseline({ setActivePage }) {
   const [formData, setFormData] = useState({
     sleepDuration: "",
     physicalActivity: "",
@@ -116,6 +116,9 @@ function Baseline() {
       setMessage(
         "Your baseline assessment has been saved."
       );
+      setTimeout(() => {
+        setActivePage("dashboard");
+      }, 500);
     }
 
     setSaving(false);

@@ -5,45 +5,44 @@ import { supabase } from "./lib/supabaseClient";
 import "./App.css";
 
 import Sidebar from "./components/Sidebar";
-
 import Topbar from "./components/Topbar";
 
 import Dashboard from "./pages/Dashboard";
-
 import Profile from "./pages/Profile";
-
 import Baseline from "./pages/Baseline";
-
 import CheckIn from "./pages/CheckIn";
-
 import History from "./pages/History";
-
 import Report from "./pages/Report";
-
 import Login from "./pages/Login";
 
 function App() {
   const [session, setSession] = useState(null);
-
   const [loading, setLoading] = useState(true);
-
   const [activePage, setActivePage] = useState("dashboard");
 
-  // --------------------------------
-  // Authentication
-  // --------------------------------
+  // -----------------------------------------
+  // AUTHENTICATION
+  // -----------------------------------------
 
   useEffect(() => {
-    async function getInitialSession() {
+    async function initializeApp() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
       setSession(session);
+
+      if (!session) {
+        setLoading(false);
+        return;
+      }
+
+      await determineStartPage(session.user.id);
+
       setLoading(false);
     }
 
-    getInitialSession();
+    initializeApp();
 
     const {
       data: { subscription },
@@ -58,17 +57,98 @@ function App() {
     };
   }, []);
 
-  // --------------------------------
-  // Logout
-  // --------------------------------
+  // -----------------------------------------
+  // CHECK ONBOARDING WHEN SESSION CHANGES
+  // -----------------------------------------
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    async function checkOnboarding() {
+      await determineStartPage(session.user.id);
+    }
+
+    checkOnboarding();
+  }, [session]);
+
+  // -----------------------------------------
+  // DETERMINE WHERE USER SHOULD GO
+  // -----------------------------------------
+
+  async function determineStartPage(userId) {
+    try {
+      // Check Student Profile
+      const { data: profile, error: profileError } =
+        await supabase
+          .from("student_profiles")
+          .select("user_id")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+      if (profileError) {
+        console.error(
+          "Profile check error:",
+          profileError
+        );
+
+        return;
+      }
+
+      // Profile does not exist
+      if (!profile) {
+        setActivePage("profile");
+        return;
+      }
+
+      // Check Baseline
+      const { data: baseline, error: baselineError } =
+        await supabase
+          .from("baseline_assessments")
+          .select("id")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+      if (baselineError) {
+        console.error(
+          "Baseline check error:",
+          baselineError
+        );
+
+        return;
+      }
+
+      // Baseline does not exist
+      if (!baseline) {
+        setActivePage("baseline");
+        return;
+      }
+
+      // Everything is completed
+      setActivePage("dashboard");
+    } catch (error) {
+      console.error(
+        "Onboarding check failed:",
+        error
+      );
+    }
+  }
+
+  // -----------------------------------------
+  // LOGOUT
+  // -----------------------------------------
 
   async function handleLogout() {
     await supabase.auth.signOut();
+
+    setSession(null);
+    setActivePage("dashboard");
   }
 
-  // --------------------------------
-  // Page navigation
-  // --------------------------------
+  // -----------------------------------------
+  // PAGE ROUTING
+  // -----------------------------------------
 
   function renderPage() {
     switch (activePage) {
@@ -80,10 +160,18 @@ function App() {
         );
 
       case "profile":
-        return <Profile />;
+        return (
+          <Profile
+            setActivePage={setActivePage}
+          />
+        );
 
       case "baseline":
-        return <Baseline />;
+        return (
+          <Baseline
+            setActivePage={setActivePage}
+          />
+        );
 
       case "checkin":
         return <CheckIn />;
@@ -103,29 +191,29 @@ function App() {
     }
   }
 
-  // --------------------------------
-  // Loading
-  // --------------------------------
+  // -----------------------------------------
+  // LOADING SCREEN
+  // -----------------------------------------
 
   if (loading) {
     return (
       <div className="loading-screen">
-        Loading Student Health Intelligence System...
+        Loading Student Health System...
       </div>
     );
   }
 
-  // --------------------------------
-  // Not logged in
-  // --------------------------------
+  // -----------------------------------------
+  // NOT LOGGED IN
+  // -----------------------------------------
 
   if (!session) {
     return <Login />;
   }
 
-  // --------------------------------
-  // Logged in
-  // --------------------------------
+  // -----------------------------------------
+  // MAIN APPLICATION
+  // -----------------------------------------
 
   return (
     <div className="app-container">

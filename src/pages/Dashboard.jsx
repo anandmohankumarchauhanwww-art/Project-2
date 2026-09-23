@@ -1,25 +1,26 @@
 import { useEffect, useState } from "react";
+
 import { supabase } from "../lib/supabaseClient";
 
+import TrendInsights from "../components/TrendInsights";
+
 function Dashboard({ setActivePage }) {
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
   const [studentName, setStudentName] = useState("Student");
 
-  // --------------------------------
-  // Load dashboard data
-  // --------------------------------
+  const [checkins, setCheckins] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    loadDashboardData();
+    loadDashboard();
   }, []);
 
-  async function loadDashboardData() {
+  async function loadDashboard() {
     setLoading(true);
     setErrorMessage("");
 
-    // Get logged-in student
     const {
       data: { user },
       error: userError,
@@ -34,259 +35,102 @@ function Dashboard({ setActivePage }) {
       return;
     }
 
-    // Get student's name from Supabase
-    const name =
-      user.user_metadata?.full_name ||
-      user.user_metadata?.name ||
-      user.email?.split("@")[0] ||
-      "Student";
+    // -----------------------------------------
+    // LOAD STUDENT NAME FROM STUDENT PROFILE
+    // -----------------------------------------
 
-    setStudentName(name);
+    const { data: profile, error: profileError } =
+      await supabase
+        .from("student_profiles")
+        .select("full_name")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-    // Get this student's health records
+    if (profileError) {
+      console.error(
+        "Profile loading error:",
+        profileError
+      );
+    }
+
+    if (profile?.full_name) {
+      setStudentName(profile.full_name);
+    } else {
+      setStudentName("Student");
+    }
+
+    // -----------------------------------------
+    // LOAD DAILY CHECK-INS
+    // -----------------------------------------
+
     const { data, error } = await supabase
-      .from("health_checkins")
+      .from("daily_checkins")
       .select("*")
-      .eq("student_id", user.id)
-      .order("checkin_date", {
-        ascending: false,
-      });
+      .eq("user_id", user.id)
+      .order("checkin_date", { ascending: false })
+      .order("created_at", { ascending: false });
 
     if (error) {
-      console.error(
-        "Error loading dashboard:",
-        error
+      console.error("Dashboard error:", error);
+
+      setErrorMessage(
+        "Could not load your health information."
       );
 
-      setErrorMessage(error.message);
       setLoading(false);
       return;
     }
 
-    setRecords(data || []);
+    setCheckins(data || []);
+
     setLoading(false);
   }
 
-  // --------------------------------
-  // Loading state
-  // --------------------------------
+  function getTodayDate() {
+    const now = new Date();
 
-  if (loading) {
-    return (
-      <div className="dashboard-loading">
-        <div className="loading-icon">
-          📊
-        </div>
+    const year = now.getFullYear();
 
-        <h2>Preparing your dashboard...</h2>
+    const month = String(
+      now.getMonth() + 1
+    ).padStart(2, "0");
 
-        <p>
-          We're bringing together your latest
-          health information.
-        </p>
-      </div>
-    );
+    const day = String(
+      now.getDate()
+    ).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
   }
 
-  // --------------------------------
-  // Error state
-  // --------------------------------
-
-  if (errorMessage) {
-    return (
-      <div className="dashboard-error">
-        <h2>Could not load your dashboard</h2>
-        <p>{errorMessage}</p>
-      </div>
-    );
-  }
-
-  // --------------------------------
-  // No health records yet
-  // --------------------------------
-
-  if (records.length === 0) {
-    return (
-      <div className="dashboard-empty">
-        <div className="dashboard-empty-icon">
-          🌱
-        </div>
-
-        <div className="small-heading">
-          YOUR HEALTH JOURNEY
-        </div>
-
-        <h1>
-          Welcome to your health dashboard
-        </h1>
-
-        <p className="page-subtitle">
-          Complete your first health check-in
-          to start building your personal health
-          history.
-        </p>
-
-        <button
-          className="primary-button"
-          onClick={() => setActivePage("checkin")}
-        >
-          + Start Your First Check-in
-        </button>
-
-        <div className="empty-info-grid">
-          <div className="content-card">
-            <div className="stat-icon">
-              📋
-            </div>
-
-            <h2>Start checking in</h2>
-
-            <p className="card-description">
-              Share a few details about your
-              sleep, activity, mood and wellbeing.
-            </p>
-          </div>
-
-          <div className="content-card">
-            <div className="stat-icon">
-              📈
-            </div>
-
-            <h2>Build your baseline</h2>
-
-            <p className="card-description">
-              As you complete more check-ins,
-              SHIS will show changes over time.
-            </p>
-          </div>
-
-          <div className="content-card">
-            <div className="stat-icon">
-              💡
-            </div>
-
-            <h2>Understand your patterns</h2>
-
-            <p className="card-description">
-              Your dashboard will gradually show
-              useful personal trends.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // --------------------------------
-  // Latest records
-  // --------------------------------
-
-  const latestRecord = records[0];
-
-  const previousRecord =
-    records.length > 1
-      ? records[1]
-      : null;
-
-  // --------------------------------
-  // Average calculation
-  // --------------------------------
-
-  function calculateAverage(field) {
-    const values = records
-      .map((record) => Number(record[field]))
-      .filter((value) => !Number.isNaN(value));
-
-    if (values.length === 0) {
-      return "—";
-    }
-
-    const total = values.reduce(
-      (sum, value) => sum + value,
-      0
-    );
-
-    return (total / values.length).toFixed(1);
-  }
-
-  const averageSleep =
-    calculateAverage("sleep_hours");
-
-  const averageExercise =
-    calculateAverage("exercise_days");
-
-  const averageWater =
-    calculateAverage("water_intake");
-
-  // --------------------------------
-  // Trend calculation
-  // --------------------------------
-
-  function getTrend(field) {
-    if (!previousRecord) {
-      return {
-        text: "Need another check-in to compare",
-        type: "neutral",
-      };
-    }
-
-    const latest = Number(
-      latestRecord[field]
-    );
-
-    const previous = Number(
-      previousRecord[field]
-    );
-
-    if (
-      Number.isNaN(latest) ||
-      Number.isNaN(previous)
-    ) {
-      return {
-        text: "Not enough data to compare",
-        type: "neutral",
-      };
-    }
-
-    const difference =
-      latest - previous;
-
-    if (difference === 0) {
-      return {
-        text: "No change from your previous check-in",
-        type: "neutral",
-      };
-    }
-
-    if (difference > 0) {
-      return {
-        text: `↑ ${difference.toFixed(
-          1
-        )} from previous check-in`,
-        type: "positive",
-      };
-    }
+  function getTodayCheckins() {
+    const today = getTodayDate();
 
     return {
-      text: `↓ ${Math.abs(
-        difference
-      ).toFixed(1)} from previous check-in`,
-      type: "warning",
+      morning: checkins.some(
+        (record) =>
+          record.checkin_date === today &&
+          record.checkin_type === "morning"
+      ),
+
+      evening: checkins.some(
+        (record) =>
+          record.checkin_date === today &&
+          record.checkin_type === "evening"
+      ),
+
+      night: checkins.some(
+        (record) =>
+          record.checkin_date === today &&
+          record.checkin_type === "night"
+      ),
     };
   }
 
-  const sleepTrend =
-    getTrend("sleep_hours");
-
-  const exerciseTrend =
-    getTrend("exercise_days");
-
-  const waterTrend =
-    getTrend("water_intake");
-
-  // --------------------------------
-  // Date formatting
-  // --------------------------------
+  function getLatestRecord(type) {
+    return checkins.find(
+      (record) => record.checkin_type === type
+    );
+  }
 
   function formatDate(date) {
     if (!date) {
@@ -303,16 +147,65 @@ function Dashboard({ setActivePage }) {
     );
   }
 
-  // --------------------------------
-  // Dashboard UI
-  // --------------------------------
+  // -----------------------------------------
+  // LOADING
+  // -----------------------------------------
+
+  if (loading) {
+    return (
+      <div className="dashboard-loading">
+        <div className="loading-icon">📊</div>
+
+        <h2>Preparing your dashboard...</h2>
+
+        <p>
+          Bringing together your latest wellbeing
+          information.
+        </p>
+      </div>
+    );
+  }
+
+  // -----------------------------------------
+  // ERROR
+  // -----------------------------------------
+
+  if (errorMessage) {
+    return (
+      <div className="dashboard-error">
+        <h2>Could not load your dashboard</h2>
+
+        <p>{errorMessage}</p>
+      </div>
+    );
+  }
+
+  const today = getTodayCheckins();
+
+  const completedToday =
+    Object.values(today).filter(Boolean).length;
+
+  const morningRecord =
+    getLatestRecord("morning");
+
+  const eveningRecord =
+    getLatestRecord("evening");
+
+  const nightRecord =
+    getLatestRecord("night");
+
+  const latestDate =
+    checkins.length > 0
+      ? checkins[0].checkin_date
+      : null;
 
   return (
     <div className="dashboard-page">
 
-      {/* Welcome section */}
+      {/* HERO / WELCOME */}
 
-      <div className="welcome-section">
+      <section className="welcome-section">
+
         <div>
 
           <div className="small-heading">
@@ -324,8 +217,7 @@ function Dashboard({ setActivePage }) {
           </h1>
 
           <p className="page-subtitle">
-            Here's a simple look at your
-            recent wellbeing data.
+            Your wellbeing journey, understood over time.
           </p>
 
         </div>
@@ -336,353 +228,436 @@ function Dashboard({ setActivePage }) {
             setActivePage("checkin")
           }
         >
-          + New Check-in
+          + Today's Check-in
         </button>
-      </div>
 
-      {/* Statistics */}
+      </section>
 
-      <div className="stats-grid">
 
-        <div className="stat-card">
-          <div className="stat-icon">
-            📋
-          </div>
+      {/* TODAY'S CHECK-IN JOURNEY */}
 
-          <p>Check-ins completed</p>
+      <section className="content-card dashboard-checkin-card">
 
-          <h2>{records.length}</h2>
-
-          <span className="positive-text">
-            Your health history
-          </span>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon">
-            😴
-          </div>
-
-          <p>Average sleep</p>
-
-          <h2>
-            {averageSleep === "—"
-              ? "—"
-              : `${averageSleep} hrs`}
-          </h2>
-
-          <span
-            className={
-              sleepTrend.type === "warning"
-                ? "warning-text"
-                : "positive-text"
-            }
-          >
-            {sleepTrend.text}
-          </span>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon">
-            🏃
-          </div>
-
-          <p>Average exercise</p>
-
-          <h2>
-            {averageExercise === "—"
-              ? "—"
-              : `${averageExercise} days`}
-          </h2>
-
-          <span
-            className={
-              exerciseTrend.type === "warning"
-                ? "warning-text"
-                : "positive-text"
-            }
-          >
-            {exerciseTrend.text}
-          </span>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon">
-            🧠
-          </div>
-
-          <p>Latest stress</p>
-
-          <h2>
-            {latestRecord.stress_level ||
-              "—"}
-          </h2>
-
-          <span className="warning-text">
-            Latest check-in
-          </span>
-        </div>
-
-      </div>
-
-      {/* Main dashboard area */}
-
-      <div className="dashboard-grid">
-
-        {/* Wellbeing snapshot */}
-
-        <div className="content-card">
-
-          <h2>
-            🌿 Your latest wellbeing snapshot
-          </h2>
-
-          <p className="card-description">
-            Based on your most recent
-            check-in.
-          </p>
-
-          <div className="dashboard-detail-grid">
-
-            <div className="dashboard-detail">
-              <span>😴 Sleep</span>
-
-              <strong>
-                {latestRecord.sleep_hours ??
-                  "—"}{" "}
-                hours
-              </strong>
-            </div>
-
-            <div className="dashboard-detail">
-              <span>⭐ Sleep quality</span>
-
-              <strong>
-                {latestRecord.sleep_quality ||
-                  "—"}
-              </strong>
-            </div>
-
-            <div className="dashboard-detail">
-              <span>💧 Water</span>
-
-              <strong>
-                {latestRecord.water_intake ??
-                  "—"}{" "}
-                L/day
-              </strong>
-            </div>
-
-            <div className="dashboard-detail">
-              <span>⚡ Energy</span>
-
-              <strong>
-                {latestRecord.energy_level ||
-                  "—"}
-              </strong>
-            </div>
-
-            <div className="dashboard-detail">
-              <span>😊 Mood</span>
-
-              <strong>
-                {latestRecord.mood || "—"}
-              </strong>
-            </div>
-
-            <div className="dashboard-detail">
-              <span>
-                📚 Academic pressure
-              </span>
-
-              <strong>
-                {latestRecord.academic_pressure ||
-                  "—"}
-              </strong>
-            </div>
-
-          </div>
-
-          <div className="latest-checkin">
-            Last check-in:{" "}
-
-            <strong>
-              {formatDate(
-                latestRecord.checkin_date
-              )}
-            </strong>
-          </div>
-
-        </div>
-
-        {/* Trends */}
-
-        <div className="content-card">
-
-          <h2>
-            📈 Your trends
-          </h2>
-
-          <p className="card-description">
-            Changes based on your previous
-            check-ins.
-          </p>
-
-          <div className="trend-list">
-
-            <div className="trend-item">
-              <div>
-
-                <span>😴 Sleep</span>
-
-                <strong>
-                  {averageSleep === "—"
-                    ? "No data"
-                    : `${averageSleep} hrs average`}
-                </strong>
-
-              </div>
-
-              <div
-                className={`trend-value ${sleepTrend.type}`}
-              >
-                {previousRecord
-                  ? sleepTrend.text.split(
-                      " from"
-                    )[0]
-                  : "—"}
-              </div>
-
-            </div>
-
-            <div className="trend-item">
-              <div>
-
-                <span>🏃 Exercise</span>
-
-                <strong>
-                  {averageExercise === "—"
-                    ? "No data"
-                    : `${averageExercise} days average`}
-                </strong>
-
-              </div>
-
-              <div
-                className={`trend-value ${exerciseTrend.type}`}
-              >
-                {previousRecord
-                  ? exerciseTrend.text.split(
-                      " from"
-                    )[0]
-                  : "—"}
-              </div>
-
-            </div>
-
-            <div className="trend-item">
-              <div>
-
-                <span>💧 Water</span>
-
-                <strong>
-                  {averageWater === "—"
-                    ? "No data"
-                    : `${averageWater} L/day average`}
-                </strong>
-
-              </div>
-
-              <div
-                className={`trend-value ${waterTrend.type}`}
-              >
-                {previousRecord
-                  ? waterTrend.text.split(
-                      " from"
-                    )[0]
-                  : "—"}
-              </div>
-
-            </div>
-
-          </div>
-
-          {!previousRecord && (
-            <div className="trend-info">
-              💡 Complete another check-in
-              to start seeing personal
-              changes over time.
-            </div>
-          )}
-
-        </div>
-
-      </div>
-
-      {/* Latest check-in */}
-
-      <div className="content-card dashboard-current">
-
-        <div className="current-header">
+        <div className="dashboard-section-header">
 
           <div>
 
             <h2>
-              📝 Latest check-in
+              📋 Today's wellbeing journey
             </h2>
 
             <p className="card-description">
-              {formatDate(
-                latestRecord.checkin_date
-              )}
+              Three small check-ins help SHIS understand
+              how your day changes from morning to night.
             </p>
 
           </div>
 
-          <span className="history-badge">
-            Completed
+          <span className="dashboard-progress-badge">
+            {completedToday}/3 completed
           </span>
 
         </div>
 
-        <div className="current-summary">
 
-          <div>
-            <span>Stress</span>
+        <div className="dashboard-checkin-grid">
 
-            <strong>
-              {latestRecord.stress_level ||
-                "—"}
-            </strong>
+          <div
+            className={`dashboard-checkin-item ${
+              today.morning ? "completed" : ""
+            }`}
+          >
+
+            <div className="checkin-item-icon">
+              {today.morning ? "✓" : "🌅"}
+            </div>
+
+            <div>
+
+              <strong>Morning</strong>
+
+              <span>
+                {today.morning
+                  ? "Completed"
+                  : "Start your day"}
+              </span>
+
+            </div>
+
           </div>
 
-          <div>
-            <span>Mood</span>
 
-            <strong>
-              {latestRecord.mood || "—"}
-            </strong>
+          <div
+            className={`dashboard-checkin-item ${
+              today.evening ? "completed" : ""
+            }`}
+          >
+
+            <div className="checkin-item-icon">
+              {today.evening ? "✓" : "🌇"}
+            </div>
+
+            <div>
+
+              <strong>Evening</strong>
+
+              <span>
+                {today.evening
+                  ? "Completed"
+                  : "Check in after your day"}
+              </span>
+
+            </div>
+
           </div>
 
-          <div>
-            <span>Energy</span>
 
-            <strong>
-              {latestRecord.energy_level ||
-                "—"}
-            </strong>
-          </div>
+          <div
+            className={`dashboard-checkin-item ${
+              today.night ? "completed" : ""
+            }`}
+          >
 
-          <div>
-            <span>Symptoms</span>
+            <div className="checkin-item-icon">
+              {today.night ? "✓" : "🌙"}
+            </div>
 
-            <strong>
-              {latestRecord.has_symptoms ||
-                "—"}
-            </strong>
+            <div>
+
+              <strong>Night</strong>
+
+              <span>
+                {today.night
+                  ? "Completed"
+                  : "Wrap up your day"}
+              </span>
+
+            </div>
+
           </div>
 
         </div>
+
+
+        {completedToday < 3 && (
+          <button
+            className="dashboard-secondary-button"
+            onClick={() =>
+              setActivePage("checkin")
+            }
+          >
+            Continue today's check-in →
+          </button>
+        )}
+
+      </section>
+
+
+      {/* CURRENT WELLBEING */}
+
+      <section className="content-card">
+
+        <div className="dashboard-section-header">
+
+          <div>
+
+            <h2>
+              🌿 Your latest wellbeing
+            </h2>
+
+            <p className="card-description">
+              A quick view of your most recent check-in
+              signals.
+            </p>
+
+          </div>
+
+          <button
+            className="dashboard-text-button"
+            onClick={() =>
+              setActivePage("history")
+            }
+          >
+            View history →
+          </button>
+
+        </div>
+
+
+        <div className="dashboard-metrics-grid">
+
+          <div className="dashboard-metric">
+
+            <span>⚡ Energy</span>
+
+            <strong>
+              {eveningRecord?.energy_level ?? "—"}
+
+              {eveningRecord?.energy_level
+                ? " / 5"
+                : ""}
+            </strong>
+
+            <small>
+              Latest evening check-in
+            </small>
+
+          </div>
+
+
+          <div className="dashboard-metric">
+
+            <span>🧠 Stress</span>
+
+            <strong>
+              {eveningRecord?.stress_level ?? "—"}
+
+              {eveningRecord?.stress_level
+                ? " / 4"
+                : ""}
+            </strong>
+
+            <small>
+              Latest evening check-in
+            </small>
+
+          </div>
+
+
+          <div className="dashboard-metric">
+
+            <span>📚 Academic pressure</span>
+
+            <strong>
+              {eveningRecord?.academic_pressure ?? "—"}
+
+              {eveningRecord?.academic_pressure
+                ? " / 4"
+                : ""}
+            </strong>
+
+            <small>
+              Latest evening check-in
+            </small>
+
+          </div>
+
+
+          <div className="dashboard-metric">
+
+            <span>⭐ Day rating</span>
+
+            <strong>
+              {nightRecord?.day_rating ?? "—"}
+
+              {nightRecord?.day_rating
+                ? " / 5"
+                : ""}
+            </strong>
+
+            <small>
+              Latest night check-in
+            </small>
+
+          </div>
+
+        </div>
+
+      </section>
+
+
+      {/* SHIS INTELLIGENCE */}
+
+      <section className="dashboard-insights-section">
+
+        <div className="dashboard-intelligence-heading">
+
+          <div className="small-heading">
+            SHIS INTELLIGENCE
+          </div>
+
+          <h2>
+            🧠 What SHIS is noticing
+          </h2>
+
+          <p>
+            SHIS looks for repeated patterns across your
+            check-ins rather than judging a single day.
+          </p>
+
+        </div>
+
+        <TrendInsights />
+
+      </section>
+
+
+      {/* SLEEP + ACTIVITY */}
+
+      <section className="dashboard-grid">
+
+        <div className="content-card">
+
+          <h2>😴 Sleep snapshot</h2>
+
+          <p className="card-description">
+            Based on your latest morning check-in.
+          </p>
+
+
+          <div className="dashboard-detail-grid">
+
+            <div className="dashboard-detail">
+
+              <span>Sleep duration</span>
+
+              <strong>
+                {morningRecord?.sleep_duration || "—"}
+              </strong>
+
+            </div>
+
+
+            <div className="dashboard-detail">
+
+              <span>Sleep quality</span>
+
+              <strong>
+                {morningRecord?.sleep_quality || "—"}
+              </strong>
+
+            </div>
+
+
+            <div className="dashboard-detail">
+
+              <span>Feeling rested</span>
+
+              <strong>
+                {morningRecord?.rested_feeling || "—"}
+              </strong>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div className="content-card">
+
+          <h2>📈 Your SHIS activity</h2>
+
+          <p className="card-description">
+            Your collected wellbeing information.
+          </p>
+
+
+          <div className="dashboard-activity">
+
+            <div>
+
+              <span>Total check-ins</span>
+
+              <strong>
+                {checkins.length}
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>Latest activity</span>
+
+              <strong>
+                {formatDate(latestDate)}
+              </strong>
+
+            </div>
+
+          </div>
+
+
+          <button
+            className="dashboard-secondary-button"
+            onClick={() =>
+              setActivePage("history")
+            }
+          >
+            View health history →
+          </button>
+
+        </div>
+
+      </section>
+
+
+      {/* QUICK ACTIONS */}
+
+      <section className="content-card dashboard-actions-card">
+
+        <div>
+
+          <h2>
+            ⚡ Continue your SHIS journey
+          </h2>
+
+          <p className="card-description">
+            Keep your wellbeing history updated so SHIS
+            can understand your patterns over time.
+          </p>
+
+        </div>
+
+
+        <div className="dashboard-actions">
+
+          <button
+            className="primary-button"
+            onClick={() =>
+              setActivePage("checkin")
+            }
+          >
+            Complete Check-in
+          </button>
+
+
+          <button
+            className="dashboard-secondary-button"
+            onClick={() =>
+              setActivePage("history")
+            }
+          >
+            View Health History
+          </button>
+
+
+          <button
+            className="dashboard-secondary-button"
+            onClick={() =>
+              setActivePage("profile")
+            }
+          >
+            Update Profile
+          </button>
+
+        </div>
+
+      </section>
+
+
+      {/* DATA EXPLANATION */}
+
+      <div className="dashboard-note">
+
+        <span>ℹ️</span>
+
+        <p>
+          SHIS builds understanding from your check-ins
+          over time. Individual values are not medical
+          diagnoses.
+        </p>
 
       </div>
 

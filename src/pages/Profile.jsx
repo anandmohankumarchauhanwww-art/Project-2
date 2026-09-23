@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-function Profile() {
+function Profile({ setActivePage }) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
   const [formData, setFormData] = useState({
+    fullName: "",
+    enrollmentNumber: "",
     age: "",
     gender: "",
-    course: "",
+    program: "",
+    branch: "",
     yearOfStudy: "",
     studentType: "",
     height: "",
@@ -13,25 +20,16 @@ function Profile() {
     waist: "",
   });
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
   useEffect(() => {
     loadProfile();
   }, []);
 
   async function loadProfile() {
-    setLoading(true);
-    setError("");
-
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
     if (!user) {
-      setError("User session not found.");
       setLoading(false);
       return;
     }
@@ -43,64 +41,66 @@ function Profile() {
       .maybeSingle();
 
     if (error) {
-      setError(error.message);
-    } else if (data) {
+      console.error(error);
+      setLoading(false);
+      return;
+    }
+
+    if (data) {
       setFormData({
-        age: data.age ?? "",
-        gender: data.gender ?? "",
-        course: data.course ?? "",
-        yearOfStudy: data.year_of_study ?? "",
-        studentType: data.student_type ?? "",
-        height: data.height_cm ?? "",
-        weight: data.weight_kg ?? "",
-        waist: data.waist_cm ?? "",
+        fullName: data.full_name || "",
+        enrollmentNumber: data.enrollment_number || "",
+        age: data.age || "",
+        gender: data.gender || "",
+        program: data.program || "",
+        branch: data.branch || "",
+        yearOfStudy: data.year_of_study || "",
+        studentType: data.student_type || "",
+        height: data.height_cm || "",
+        weight: data.weight_kg || "",
+        waist: data.waist_cm || "",
       });
     }
 
     setLoading(false);
   }
 
-  function handleChange(event) {
-    const { name, value } = event.target;
-
-    setFormData((previous) => ({
-      ...previous,
-      [name]: value,
-    }));
-
-    setMessage("");
-    setError("");
+  function handleChange(e) {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function handleSubmit(e) {
+    e.preventDefault();
 
     setSaving(true);
     setMessage("");
-    setError("");
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
     if (!user) {
-      setError("User session not found.");
+      setMessage("You are not logged in.");
       setSaving(false);
       return;
     }
 
     const profileData = {
       user_id: user.id,
+      full_name: formData.fullName,
+      enrollment_number: formData.enrollmentNumber,
       age: Number(formData.age),
       gender: formData.gender,
-      course: formData.course,
+      program: formData.program,
+      branch: formData.branch,
       year_of_study: Number(formData.yearOfStudy),
       student_type: formData.studentType,
       height_cm: Number(formData.height),
       weight_kg: Number(formData.weight),
-      waist_cm: formData.waist
-        ? Number(formData.waist)
-        : null,
+      waist_cm: formData.waist ? Number(formData.waist) : null,
     };
 
     const { error } = await supabase
@@ -110,55 +110,95 @@ function Profile() {
       });
 
     if (error) {
-      setError(error.message);
-    } else {
-      setMessage("Profile saved successfully.");
+      console.error(error);
+      setMessage("Could not save your profile.");
+      setSaving(false);
+      return;
     }
 
+    setMessage("Profile saved successfully.");
+    setTimeout(() => {
+      setActivePage("baseline");
+    }, 500);
     setSaving(false);
   }
 
   if (loading) {
-    return <div className="content-card">Loading profile...</div>;
+    return (
+      <div className="profile-loading">
+        Loading profile...
+      </div>
+    );
   }
 
   return (
-    <section>
-      <div className="checkin-header">
-        <h1>Student Profile</h1>
+    <div className="profile-page">
 
-        <p className="page-subtitle">
-          Tell us a little about yourself. This information
-          helps SHIS understand your health profile.
-        </p>
+      {/* PAGE HEADER */}
+      <div className="profile-header">
+        <div className="profile-header-icon">👤</div>
+
+        <div>
+          <h1>Student Profile</h1>
+          <p>
+            Tell us a little about yourself. This helps SHIS understand
+            your health profile.
+          </p>
+        </div>
       </div>
 
-      <form className="health-form" onSubmit={handleSubmit}>
-        <div className="form-section">
-          <div className="form-section-header">
+      <form onSubmit={handleSubmit} className="profile-form">
+
+        {/* PERSONAL INFORMATION */}
+        <section className="profile-card">
+          <div className="profile-section-header">
+            <div className="section-icon personal-icon">👤</div>
+
             <div>
-              <h2>About You</h2>
-              <p className="section-description">
-                Basic information about you and your studies.
-              </p>
+              <h2>Personal Information</h2>
+              <p>Basic information about you and your studies.</p>
             </div>
           </div>
 
-          <div className="form-grid">
-            <div className="form-field">
+          <div className="profile-grid four-columns">
+
+            <div className="profile-field">
+              <label>Full Name</label>
+              <input
+                type="text"
+                name="fullName"
+                value={formData.fullName}
+                onChange={handleChange}
+                placeholder="Enter your full name"
+                required
+              />
+            </div>
+
+            <div className="profile-field">
+              <label>Enrollment Number</label>
+              <input
+                type="text"
+                name="enrollmentNumber"
+                value={formData.enrollmentNumber}
+                onChange={handleChange}
+                placeholder="e.g. 23BME001"
+                required
+              />
+            </div>
+
+            <div className="profile-field">
               <label>Age</label>
               <input
                 type="number"
                 name="age"
                 value={formData.age}
                 onChange={handleChange}
-                min="15"
-                max="100"
+                placeholder="e.g. 21"
                 required
               />
             </div>
 
-            <div className="form-field">
+            <div className="profile-field">
               <label>Gender</label>
               <select
                 name="gender"
@@ -176,19 +216,47 @@ function Profile() {
               </select>
             </div>
 
-            <div className="form-field">
-              <label>Course / Department</label>
+          </div>
+        </section>
+
+        {/* ACADEMIC INFORMATION */}
+        <section className="profile-card">
+          <div className="profile-section-header">
+            <div className="section-icon academic-icon">🎓</div>
+
+            <div>
+              <h2>Academic Information</h2>
+              <p>Your academic details at the university.</p>
+            </div>
+          </div>
+
+          <div className="profile-grid three-columns">
+
+            <div className="profile-field">
+              <label>Program</label>
               <input
                 type="text"
-                name="course"
-                value={formData.course}
+                name="program"
+                value={formData.program}
+                onChange={handleChange}
+                placeholder="e.g. B.Tech"
+                required
+              />
+            </div>
+
+            <div className="profile-field">
+              <label>Branch</label>
+              <input
+                type="text"
+                name="branch"
+                value={formData.branch}
                 onChange={handleChange}
                 placeholder="e.g. Biomedical Engineering"
                 required
               />
             </div>
 
-            <div className="form-field">
+            <div className="profile-field">
               <label>Year of Study</label>
               <select
                 name="yearOfStudy"
@@ -201,11 +269,26 @@ function Profile() {
                 <option value="2">2nd Year</option>
                 <option value="3">3rd Year</option>
                 <option value="4">4th Year</option>
-                <option value="5">5th Year</option>
               </select>
             </div>
 
-            <div className="form-field">
+          </div>
+        </section>
+
+        {/* STUDENT CONTEXT */}
+        <section className="profile-card">
+          <div className="profile-section-header">
+            <div className="section-icon context-icon">👥</div>
+
+            <div>
+              <h2>Student Context</h2>
+              <p>Your student type and living situation.</p>
+            </div>
+          </div>
+
+          <div className="profile-grid one-column">
+
+            <div className="profile-field">
               <label>Student Type</label>
               <select
                 name="studentType"
@@ -213,27 +296,32 @@ function Profile() {
                 onChange={handleChange}
                 required
               >
-                <option value="">Select type</option>
+                <option value="">Select student type</option>
                 <option value="Hosteller">Hosteller</option>
                 <option value="Day Scholar">Day Scholar</option>
               </select>
             </div>
-          </div>
-        </div>
 
-        <div className="form-section">
-          <div className="form-section-header">
+          </div>
+        </section>
+
+        {/* BODY MEASUREMENTS */}
+        <section className="profile-card">
+          <div className="profile-section-header">
+            <div className="section-icon body-icon">❤️</div>
+
             <div>
               <h2>Body Measurements</h2>
-              <p className="section-description">
-                These measurements help SHIS understand your
-                body composition.
+              <p>
+                These measurements help SHIS understand your body
+                composition.
               </p>
             </div>
           </div>
 
-          <div className="form-grid">
-            <div className="form-field">
+          <div className="profile-grid three-columns">
+
+            <div className="profile-field">
               <label>Height (cm)</label>
               <input
                 type="number"
@@ -241,14 +329,11 @@ function Profile() {
                 value={formData.height}
                 onChange={handleChange}
                 placeholder="e.g. 170"
-                min="100"
-                max="250"
-                step="0.1"
                 required
               />
             </div>
 
-            <div className="form-field">
+            <div className="profile-field">
               <label>Weight (kg)</label>
               <input
                 type="number"
@@ -256,17 +341,14 @@ function Profile() {
                 value={formData.weight}
                 onChange={handleChange}
                 placeholder="e.g. 65"
-                min="20"
-                max="300"
-                step="0.1"
                 required
               />
             </div>
 
-            <div className="form-field">
+            <div className="profile-field">
               <label>
                 Waist Circumference (cm)
-                <span className="optional-label"> Optional</span>
+                <span className="optional-label"> — Optional</span>
               </label>
 
               <input
@@ -275,37 +357,29 @@ function Profile() {
                 value={formData.waist}
                 onChange={handleChange}
                 placeholder="e.g. 80"
-                min="30"
-                max="200"
-                step="0.1"
               />
             </div>
-          </div>
-        </div>
 
-        <div className="form-actions">
-          <button
-            type="submit"
-            className="primary-button"
-            disabled={saving}
-          >
-            {saving ? "Saving..." : "Save Profile"}
-          </button>
-        </div>
+          </div>
+        </section>
+
+        {/* SAVE */}
+        <button
+          type="submit"
+          className="profile-save-button"
+          disabled={saving}
+        >
+          {saving ? "Saving..." : "💾  Save Profile"}
+        </button>
 
         {message && (
-          <div className="success-message">
+          <div className="profile-message">
             {message}
           </div>
         )}
 
-        {error && (
-          <div className="error-message">
-            {error}
-          </div>
-        )}
       </form>
-    </section>
+    </div>
   );
 }
 
