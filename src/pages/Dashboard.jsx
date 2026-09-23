@@ -1,3 +1,4 @@
+import NotificationSetup from "../components/NotificationSetup";
 import { useEffect, useState } from "react";
 
 import { supabase } from "../lib/supabaseClient";
@@ -251,6 +252,8 @@ function Dashboard({ setActivePage }) {
           + Today's Check-in
         </button>
       </section>
+
+      <NotificationSetup />
 
 
       {/* TODAY'S CHECK-IN JOURNEY */}
