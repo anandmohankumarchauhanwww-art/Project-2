@@ -2,7 +2,16 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 function CheckIn() {
-  const [checkinType, setCheckinType] = useState("morning");
+  const [checkinType, setCheckinType] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get("type");
+
+    if (type === "evening" || type === "night") {
+      return type;
+    }
+
+    return "morning";
+  });
 
   const [morningData, setMorningData] = useState({
     sleepDuration: "",

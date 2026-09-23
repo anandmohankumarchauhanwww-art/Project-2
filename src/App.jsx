@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-
 import { supabase } from "./lib/supabaseClient";
-
 import "./App.css";
 
 import Sidebar from "./components/Sidebar";
@@ -18,7 +16,18 @@ import Login from "./pages/Login";
 function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activePage, setActivePage] = useState("dashboard");
+
+  // STEP 9.1
+  // Open Check-in automatically when URL is /checkin
+  const [activePage, setActivePage] = useState(() => {
+    const path = window.location.pathname;
+
+    if (path === "/checkin") {
+      return "checkin";
+    }
+
+    return "dashboard";
+  });
 
   // -----------------------------------------
   // AUTHENTICATION
@@ -37,7 +46,16 @@ function App() {
         return;
       }
 
-      await determineStartPage(session.user.id);
+      // STEP 9.1
+      // If the user opened a direct check-in URL,
+      // do not send them back to the dashboard.
+      const path = window.location.pathname;
+
+      if (path === "/checkin") {
+        setActivePage("checkin");
+      } else {
+        await determineStartPage(session.user.id);
+      }
 
       setLoading(false);
     }
@@ -66,6 +84,15 @@ function App() {
       return;
     }
 
+    // STEP 9.1
+    // Do not overwrite direct /checkin navigation.
+    const path = window.location.pathname;
+
+    if (path === "/checkin") {
+      setActivePage("checkin");
+      return;
+    }
+
     async function checkOnboarding() {
       await determineStartPage(session.user.id);
     }
@@ -80,12 +107,15 @@ function App() {
   async function determineStartPage(userId) {
     try {
       // Check Student Profile
-      const { data: profile, error: profileError } =
-        await supabase
-          .from("student_profiles")
-          .select("user_id")
-          .eq("user_id", userId)
-          .maybeSingle();
+
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("student_profiles")
+        .select("user_id")
+        .eq("user_id", userId)
+        .maybeSingle();
 
       if (profileError) {
         console.error(
@@ -97,18 +127,22 @@ function App() {
       }
 
       // Profile does not exist
+
       if (!profile) {
         setActivePage("profile");
         return;
       }
 
       // Check Baseline
-      const { data: baseline, error: baselineError } =
-        await supabase
-          .from("baseline_assessments")
-          .select("id")
-          .eq("user_id", userId)
-          .maybeSingle();
+
+      const {
+        data: baseline,
+        error: baselineError,
+      } = await supabase
+        .from("baseline_assessments")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
 
       if (baselineError) {
         console.error(
@@ -120,12 +154,14 @@ function App() {
       }
 
       // Baseline does not exist
+
       if (!baseline) {
         setActivePage("baseline");
         return;
       }
 
       // Everything is completed
+
       setActivePage("dashboard");
     } catch (error) {
       console.error(

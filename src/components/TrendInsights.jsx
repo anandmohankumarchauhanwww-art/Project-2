@@ -2,9 +2,16 @@ import { useEffect, useState } from "react";
 
 import { supabase } from "../lib/supabaseClient";
 
+import {
+  detectTrendInsights,
+  SHIS_INTELLIGENCE_DISCLAIMER,
+} from "../utils/shisIntelligence";
+
 function TrendInsights() {
   const [insights, setInsights] = useState([]);
+
   const [loading, setLoading] = useState(true);
+
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -21,8 +28,12 @@ function TrendInsights() {
     } = await supabase.auth.getUser();
 
     if (userError || !user) {
-      setMessage("Your session has expired. Please login again.");
+      setMessage(
+        "Your session has expired. Please login again."
+      );
+
       setLoading(false);
+
       return;
     }
 
@@ -30,463 +41,36 @@ function TrendInsights() {
       .from("daily_checkins")
       .select("*")
       .eq("user_id", user.id)
-      .order("checkin_date", { ascending: true });
+      .order("checkin_date", {
+        ascending: true,
+      });
 
     if (error) {
-      console.error("Error loading trend data:", error);
+      console.error(
+        "Error loading trend data:",
+        error
+      );
 
       setMessage(
         "Could not load enough data to detect trends."
       );
 
       setLoading(false);
+
       return;
     }
 
-    const trendInsights = detectTrends(data || []);
+    const trendInsights =
+      detectTrendInsights(data || []);
 
     setInsights(trendInsights);
+
     setLoading(false);
   }
 
-  /*
-    --------------------------------------------------
-    GROUP CHECK-INS BY DATE
-    --------------------------------------------------
-  */
-
-  function groupRecordsByDate(records) {
-    const grouped = {};
-
-    records.forEach((record) => {
-      if (!grouped[record.checkin_date]) {
-        grouped[record.checkin_date] = {
-          morning: null,
-          evening: null,
-          night: null,
-        };
-      }
-
-      grouped[record.checkin_date][record.checkin_type] =
-        record;
-    });
-
-    return grouped;
-  }
-
-  /*
-    --------------------------------------------------
-    GET COMPLETE DAILY RECORDS
-    --------------------------------------------------
-  */
-
-  function getDailyRecords(records) {
-    const grouped = groupRecordsByDate(records);
-
-    return Object.entries(grouped)
-      .map(([date, day]) => ({
-        date,
-        morning: day.morning,
-        evening: day.evening,
-        night: day.night,
-      }))
-      .sort(
-        (a, b) =>
-          new Date(a.date) - new Date(b.date)
-      );
-  }
-
-  /*
-    --------------------------------------------------
-    TREND HELPERS
-    --------------------------------------------------
-  */
-
-  function getNumericValues(dailyRecords, field) {
-    return dailyRecords
-      .map((day) => {
-        if (!day.evening) {
-          return null;
-        }
-
-        const value = Number(day.evening[field]);
-
-        return Number.isNaN(value) ? null : value;
-      })
-      .filter((value) => value !== null);
-  }
-
-  function getDayRatings(dailyRecords) {
-    return dailyRecords
-      .map((day) => {
-        if (!day.night) {
-          return null;
-        }
-
-        const value = Number(day.night.day_rating);
-
-        return Number.isNaN(value) ? null : value;
-      })
-      .filter((value) => value !== null);
-  }
-
-  /*
-    --------------------------------------------------
-    MAIN TREND DETECTION
-    --------------------------------------------------
-  */
-
-  function detectTrends(records) {
-    const dailyRecords = getDailyRecords(records);
-
-    /*
-      We need at least three evening check-ins
-      before identifying meaningful patterns.
-    */
-
-    const eveningDays = dailyRecords.filter(
-      (day) => day.evening
-    );
-
-    if (eveningDays.length < 3) {
-      return [
-        {
-          type: "info",
-          icon: "📊",
-          title: "More data needed",
-          message:
-            "Keep completing your daily check-ins. SHIS needs several days of data before it can identify meaningful wellbeing patterns.",
-        },
-      ];
-    }
-
-    const detectedInsights = [];
-
-    /*
-      Use the most recent three days that contain
-      evening check-ins.
-    */
-
-    const recentDays = eveningDays.slice(-3);
-
-    const recentStress = getNumericValues(
-      recentDays,
-      "stress_level"
-    );
-
-    const recentAcademicPressure = getNumericValues(
-      recentDays,
-      "academic_pressure"
-    );
-
-    const recentEnergy = getNumericValues(
-      recentDays,
-      "energy_level"
-    );
-
-    const recentDayRatings = getDayRatings(recentDays);
-
-    /*
-      --------------------------------------------------
-      1. STRESS
-      --------------------------------------------------
-    */
-
-    if (recentStress.length === 3) {
-      const highStressDays = recentStress.filter(
-        (value) => value >= 3
-      ).length;
-
-      if (highStressDays === 3) {
-        detectedInsights.push({
-          type: "attention",
-          icon: "🧠",
-          title: "Stress has remained elevated",
-          message:
-            "Your recent evening check-ins show elevated stress levels across several days.",
-        });
-      }
-    }
-
-    /*
-      --------------------------------------------------
-      2. ACADEMIC PRESSURE
-      --------------------------------------------------
-    */
-
-    if (recentAcademicPressure.length === 3) {
-      const highPressureDays =
-        recentAcademicPressure.filter(
-          (value) => value >= 3
-        ).length;
-
-      if (highPressureDays === 3) {
-        detectedInsights.push({
-          type: "attention",
-          icon: "📚",
-          title:
-            "Academic pressure has remained elevated",
-          message:
-            "Your recent check-ins show higher academic pressure across several days.",
-        });
-      }
-    }
-
-    /*
-      --------------------------------------------------
-      3. ENERGY
-      --------------------------------------------------
-    */
-
-    if (recentEnergy.length === 3) {
-      const lowEnergyDays = recentEnergy.filter(
-        (value) => value <= 2
-      ).length;
-
-      if (lowEnergyDays === 3) {
-        detectedInsights.push({
-          type: "attention",
-          icon: "⚡",
-          title: "Energy levels have been lower",
-          message:
-            "Your recent evening check-ins show lower energy levels across several days.",
-        });
-      }
-    }
-
-    /*
-      --------------------------------------------------
-      4. DAY RATING
-      --------------------------------------------------
-    */
-
-    if (recentDayRatings.length === 3) {
-      const lowerRatedDays = recentDayRatings.filter(
-        (value) => value <= 2
-      ).length;
-
-      if (lowerRatedDays === 3) {
-        detectedInsights.push({
-          type: "attention",
-          icon: "⭐",
-          title: "Day ratings have been lower",
-          message:
-            "Your recent night check-ins show lower overall day ratings across several days.",
-        });
-      }
-    }
-
-    /*
-      --------------------------------------------------
-      COMBINED DAILY PATTERNS
-      --------------------------------------------------
-    */
-
-    /*
-      PATTERN 1:
-      Academic pressure + low energy
-    */
-
-    const academicEnergyDays = recentDays.filter(
-      (day) =>
-        day.evening &&
-        Number(day.evening.academic_pressure) >= 3 &&
-        Number(day.evening.energy_level) <= 2
-    );
-
-    if (academicEnergyDays.length === 3) {
-      detectedInsights.push({
-        type: "pattern",
-        icon: "🔄",
-        title:
-          "Academic pressure and energy may be connected",
-        message:
-          "Across your recent evening check-ins, higher academic pressure has appeared alongside lower energy levels.",
-      });
-    }
-
-    /*
-      PATTERN 2:
-      Stress + low energy
-    */
-
-    const stressEnergyDays = recentDays.filter(
-      (day) =>
-        day.evening &&
-        Number(day.evening.stress_level) >= 3 &&
-        Number(day.evening.energy_level) <= 2
-    );
-
-    if (stressEnergyDays.length === 3) {
-      detectedInsights.push({
-        type: "pattern",
-        icon: "🧠",
-        title:
-          "Stress and energy show a repeated pattern",
-        message:
-          "Your recent check-ins show higher stress appearing alongside lower energy levels.",
-      });
-    }
-
-    /*
-      PATTERN 3:
-      Stress + low day rating
-    */
-
-    const stressDayRatingDays = recentDays.filter(
-      (day) =>
-        day.evening &&
-        day.night &&
-        Number(day.evening.stress_level) >= 3 &&
-        Number(day.night.day_rating) <= 2
-    );
-
-    if (stressDayRatingDays.length === 3) {
-      detectedInsights.push({
-        type: "pattern",
-        icon: "🌙",
-        title:
-          "Stress and day rating show a repeated pattern",
-        message:
-          "Higher stress has appeared alongside lower overall day ratings in your recent check-ins.",
-      });
-    }
-
-    /*
-      PATTERN 4:
-      Academic pressure + low day rating
-    */
-
-    const academicDayRatingDays =
-      recentDays.filter(
-        (day) =>
-          day.evening &&
-          day.night &&
-          Number(day.evening.academic_pressure) >= 3 &&
-          Number(day.night.day_rating) <= 2
-      );
-
-    if (academicDayRatingDays.length === 3) {
-      detectedInsights.push({
-        type: "pattern",
-        icon: "📚",
-        title:
-          "Academic pressure and day rating show a repeated pattern",
-        message:
-          "Higher academic pressure has appeared alongside lower overall day ratings in your recent check-ins.",
-      });
-    }
-
-    /*
-      PATTERN 5:
-      Multiple signals together
-    */
-
-    const multipleSignalDays =
-      recentDays.filter(
-        (day) =>
-          day.evening &&
-          Number(day.evening.stress_level) >= 3 &&
-          Number(day.evening.academic_pressure) >= 3 &&
-          Number(day.evening.energy_level) <= 2
-      );
-
-    if (multipleSignalDays.length === 3) {
-      detectedInsights.push({
-        type: "pattern",
-        icon: "🔎",
-        title:
-          "Several wellbeing signals are appearing together",
-        message:
-          "Your recent check-ins show higher stress and academic pressure alongside lower energy. SHIS will continue monitoring whether this pattern persists.",
-      });
-    }
-
-    /*
-      --------------------------------------------------
-      MORNING SIGNAL
-      --------------------------------------------------
-    */
-
-    const recentMorningDays = recentDays.filter(
-      (day) => day.morning
-    );
-
-    const poorSleepDays = recentMorningDays.filter(
-      (day) =>
-        day.morning.sleep_quality === "Poor" ||
-        day.morning.sleep_quality === "Okay"
-    ).length;
-
-    const lowRestDays = recentMorningDays.filter(
-      (day) =>
-        day.morning.rested_feeling ===
-          "Not rested" ||
-        day.morning.rested_feeling ===
-          "A little tired"
-    ).length;
-
-    /*
-      PATTERN 6:
-      Poor sleep + low energy
-    */
-
-    const sleepEnergyDays = recentDays.filter(
-      (day) =>
-        day.morning &&
-        day.evening &&
-        (
-          day.morning.sleep_quality === "Poor" ||
-          day.morning.sleep_quality === "Okay"
-        ) &&
-        (
-          day.morning.rested_feeling ===
-            "Not rested" ||
-          day.morning.rested_feeling ===
-            "A little tired"
-        ) &&
-        Number(day.evening.energy_level) <= 2
-    );
-
-    if (
-      recentMorningDays.length === 3 &&
-      poorSleepDays >= 2 &&
-      lowRestDays >= 2 &&
-      sleepEnergyDays.length >= 2
-    ) {
-      detectedInsights.push({
-        type: "pattern",
-        icon: "💤",
-        title: "Sleep and energy may be related",
-        message:
-          "Recent morning check-ins show poorer rest appearing alongside lower evening energy levels.",
-      });
-    }
-
-    /*
-      --------------------------------------------------
-      POSITIVE RESULT
-      --------------------------------------------------
-    */
-
-    if (detectedInsights.length === 0) {
-      detectedInsights.push({
-        type: "positive",
-        icon: "🌱",
-        title: "No repeated concern detected",
-        message:
-          "Your recent check-ins do not currently show a repeated pattern that needs attention.",
-      });
-    }
-
-    return detectedInsights;
-  }
-
-  /*
-    --------------------------------------------------
-    LOADING STATE
-    --------------------------------------------------
-  */
+  /* --------------------------------------------------
+     LOADING STATE
+  -------------------------------------------------- */
 
   if (loading) {
     return (
@@ -525,11 +109,9 @@ function TrendInsights() {
     );
   }
 
-  /*
-    --------------------------------------------------
-    ERROR STATE
-    --------------------------------------------------
-  */
+  /* --------------------------------------------------
+     ERROR STATE
+  -------------------------------------------------- */
 
   if (message) {
     return (
@@ -555,11 +137,9 @@ function TrendInsights() {
     );
   }
 
-  /*
-    --------------------------------------------------
-    MAIN UI
-    --------------------------------------------------
-  */
+  /* --------------------------------------------------
+     MAIN UI
+  -------------------------------------------------- */
 
   return (
     <div style={styles.card}>
@@ -636,8 +216,7 @@ function TrendInsights() {
         <span>ℹ️</span>
 
         <span>
-          These are patterns in your check-in data,
-          not medical diagnoses.
+          {SHIS_INTELLIGENCE_DISCLAIMER}
         </span>
       </div>
     </div>

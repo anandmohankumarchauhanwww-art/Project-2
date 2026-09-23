@@ -12,14 +12,482 @@ import {
 
 import { supabase } from "../lib/supabaseClient";
 
+import {
+  detectTrendInsights,
+  detectPersistentPatterns,
+  buildTimeAwareInsight,
+  buildPersistentInsight,
+} from "../utils/shisIntelligence";
+
+// ============================================================
+// DATE HELPERS
+// ============================================================
+
+function formatDateForDatabase(date) {
+  const year = date.getFullYear();
+
+  const month = String(
+    date.getMonth() + 1
+  ).padStart(2, "0");
+
+  const day = String(
+    date.getDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getMonthLabel(monthValue) {
+  const date = new Date(
+    `${monthValue}-01T00:00:00`
+  );
+
+  return date.toLocaleDateString(
+    "en-US",
+    {
+      month: "long",
+      year: "numeric",
+    }
+  );
+}
+
+function getPreviousMonth(monthValue) {
+  const [year, month] =
+    monthValue.split("-").map(Number);
+
+  const date = new Date(
+    year,
+    month - 2,
+    1
+  );
+
+  const previousYear =
+    date.getFullYear();
+
+  const previousMonth = String(
+    date.getMonth() + 1
+  ).padStart(2, "0");
+
+  return `${previousYear}-${previousMonth}`;
+}
+
+// ============================================================
+// RECORD HELPERS
+// ============================================================
+
+function groupRecordsByDate(records) {
+  return records.reduce(
+    (groups, record) => {
+      if (!groups[record.checkin_date]) {
+        groups[record.checkin_date] = [];
+      }
+
+      groups[record.checkin_date].push(
+        record
+      );
+
+      return groups;
+    },
+    {}
+  );
+}
+
+function getRecordByType(records, type) {
+  return records.find(
+    (record) =>
+      record.checkin_type === type
+  );
+}
+
+function getNumericValues(
+  records,
+  field
+) {
+  return records
+    .map((record) =>
+      Number(record[field])
+    )
+    .filter(
+      (value) => !Number.isNaN(value)
+    );
+}
+
+function getAverage(records, field) {
+  const values = getNumericValues(
+    records,
+    field
+  );
+
+  if (!values.length) {
+    return null;
+  }
+
+  const total = values.reduce(
+    (sum, value) => sum + value,
+    0
+  );
+
+  return total / values.length;
+}
+
+function getMostCommonValue(
+  records,
+  field
+) {
+  const values = records
+    .map((record) => record[field])
+    .filter(Boolean);
+
+  if (!values.length) {
+    return "Not enough data";
+  }
+
+  const counts = {};
+
+  values.forEach((value) => {
+    counts[value] =
+      (counts[value] || 0) + 1;
+  });
+
+  return Object.entries(counts).sort(
+    (a, b) => b[1] - a[1]
+  )[0][0];
+}
+
+// ============================================================
+// MONTHLY REPORT CALCULATION
+// ============================================================
+
+function calculateReport(records) {
+  const morningRecords =
+    records.filter(
+      (record) =>
+        record.checkin_type ===
+        "morning"
+    );
+
+  const eveningRecords =
+    records.filter(
+      (record) =>
+        record.checkin_type ===
+        "evening"
+    );
+
+  const nightRecords =
+    records.filter(
+      (record) =>
+        record.checkin_type ===
+        "night"
+    );
+
+  const grouped =
+    groupRecordsByDate(records);
+
+  return {
+    totalCheckins: records.length,
+
+    activeDays:
+      Object.keys(grouped).length,
+
+    morningCount:
+      morningRecords.length,
+
+    eveningCount:
+      eveningRecords.length,
+
+    nightCount:
+      nightRecords.length,
+
+    energyAverage:
+      getAverage(
+        eveningRecords,
+        "energy_level"
+      ),
+
+    stressAverage:
+      getAverage(
+        eveningRecords,
+        "stress_level"
+      ),
+
+    academicPressureAverage:
+      getAverage(
+        eveningRecords,
+        "academic_pressure"
+      ),
+
+    dayRatingAverage:
+      getAverage(
+        nightRecords,
+        "day_rating"
+      ),
+
+    mostCommonSleepQuality:
+      getMostCommonValue(
+        morningRecords,
+        "sleep_quality"
+      ),
+  };
+}
+
+// ============================================================
+// CENTRAL SHIS INTELLIGENCE
+// ============================================================
+
+function buildReportPatterns(records) {
+  const insights =
+    detectTrendInsights(records);
+
+  return insights.map((insight) => ({
+    icon: insight.icon,
+    title: insight.title,
+    description: insight.message,
+    type: insight.type,
+  }));
+}
+
+// ============================================================
+// DAILY TREND DATA
+// ============================================================
+
+function buildTrendData(records) {
+  const grouped =
+    groupRecordsByDate(records);
+
+  return Object.keys(grouped)
+    .sort()
+    .map((date) => {
+      const dayRecords =
+        grouped[date];
+
+      const evening =
+        getRecordByType(
+          dayRecords,
+          "evening"
+        );
+
+      const night =
+        getRecordByType(
+          dayRecords,
+          "night"
+        );
+
+      const dateObject = new Date(
+        `${date}T00:00:00`
+      );
+
+      const label =
+        dateObject.toLocaleDateString(
+          "en-US",
+          {
+            day: "numeric",
+            month: "short",
+          }
+        );
+
+      return {
+        date: label,
+
+        energy:
+          evening?.energy_level ??
+          null,
+
+        stress:
+          evening?.stress_level ??
+          null,
+
+        academicPressure:
+          evening?.academic_pressure ??
+          null,
+
+        dayRating:
+          night?.day_rating ??
+          null,
+      };
+    });
+}
+
+// ============================================================
+// MONTH COMPARISON
+// ============================================================
+
+function compareValues(
+  currentValue,
+  previousValue
+) {
+  if (
+    currentValue === null ||
+    currentValue === undefined ||
+    previousValue === null ||
+    previousValue === undefined
+  ) {
+    return null;
+  }
+
+  const current =
+    Number(currentValue);
+
+  const previous =
+    Number(previousValue);
+
+  if (
+    Number.isNaN(current) ||
+    Number.isNaN(previous)
+  ) {
+    return null;
+  }
+
+  const difference =
+    current - previous;
+
+  if (
+    Math.abs(difference) <= 0.05
+  ) {
+    return {
+      difference: 0,
+      direction: "similar",
+      label: "Remained similar",
+    };
+  }
+
+  if (difference > 0) {
+    return {
+      difference,
+      direction: "increased",
+      label: "Increased",
+    };
+  }
+
+  return {
+    difference,
+    direction: "decreased",
+    label: "Decreased",
+  };
+}
+
+function getComparisonData(
+  currentReport,
+  previousReport
+) {
+  return [
+    {
+      key: "energy",
+      label: "Energy",
+      current:
+        currentReport.energyAverage,
+      previous:
+        previousReport.energyAverage,
+    },
+
+    {
+      key: "stress",
+      label: "Stress",
+      current:
+        currentReport.stressAverage,
+      previous:
+        previousReport.stressAverage,
+    },
+
+    {
+      key: "academicPressure",
+      label: "Academic Pressure",
+      current:
+        currentReport.academicPressureAverage,
+      previous:
+        previousReport.academicPressureAverage,
+    },
+
+    {
+      key: "dayRating",
+      label: "Day Rating",
+      current:
+        currentReport.dayRatingAverage,
+      previous:
+        previousReport.dayRatingAverage,
+    },
+  ].map((item) => ({
+    ...item,
+    comparison:
+      compareValues(
+        item.current,
+        item.previous
+      ),
+  }));
+}
+
+// ============================================================
+// LONG-TERM MONTHLY HISTORY
+// ============================================================
+
+function buildMonthlyHistory(records) {
+  const grouped = {};
+
+  records.forEach((record) => {
+    const month =
+      record.checkin_date.slice(0, 7);
+
+    if (!grouped[month]) {
+      grouped[month] = [];
+    }
+
+    grouped[month].push(record);
+  });
+
+  return Object.keys(grouped)
+    .sort()
+    .map((month) => {
+      const monthReport =
+        calculateReport(
+          grouped[month]
+        );
+
+      const date = new Date(
+        `${month}-01T00:00:00`
+      );
+
+      return {
+        month,
+
+        label:
+          date.toLocaleDateString(
+            "en-US",
+            {
+              month: "short",
+              year: "numeric",
+            }
+          ),
+
+        energy:
+          monthReport.energyAverage,
+
+        stress:
+          monthReport.stressAverage,
+
+        academicPressure:
+          monthReport.academicPressureAverage,
+
+        dayRating:
+          monthReport.dayRatingAverage,
+      };
+    });
+}
+
+// ============================================================
+// REPORT COMPONENT
+// ============================================================
+
 function Report() {
-  const [user, setUser] = useState(null);
-  const [allCheckins, setAllCheckins] = useState([]);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [selectedMonth, setSelectedMonth] = useState("");
+  const [error, setError] =
+    useState("");
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [allCheckins, setAllCheckins] =
+    useState([]);
+
+  const [selectedMonth, setSelectedMonth] =
+    useState("");
 
   useEffect(() => {
     loadReportData();
@@ -29,586 +497,132 @@ function Report() {
     setLoading(true);
     setError("");
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+      } =
+        await supabase.auth.getUser();
 
-    if (userError || !user) {
-      setError("Unable to load your account.");
-      setLoading(false);
-      return;
+      if (!user) {
+        setError(
+          "Please log in to view your report."
+        );
+
+        setLoading(false);
+        return;
+      }
+
+      const now = new Date();
+
+      const startDate = new Date(
+        now.getFullYear(),
+        now.getMonth() - 11,
+        1
+      );
+
+      const startDateString =
+        formatDateForDatabase(
+          startDate
+        );
+
+      const { data, error } =
+        await supabase
+          .from("daily_checkins")
+          .select("*")
+          .eq("user_id", user.id)
+          .gte(
+            "checkin_date",
+            startDateString
+          )
+          .order("checkin_date", {
+            ascending: true,
+          });
+
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+
+      setAllCheckins(data || []);
+
+      const currentMonth =
+        `${now.getFullYear()}-${String(
+          now.getMonth() + 1
+        ).padStart(2, "0")}`;
+
+      setSelectedMonth(
+        currentMonth
+      );
+    } catch (err) {
+      setError(
+        err.message ||
+          "Unable to load monthly report."
+      );
     }
-
-    setUser(user);
-
-    // Get the last 12 months of check-in data
-    const now = new Date();
-
-    const startDate = new Date(
-      now.getFullYear(),
-      now.getMonth() - 11,
-      1
-    );
-
-    const startDateString =
-      formatDateForDatabase(startDate);
-
-    const {
-      data,
-      error: checkinError,
-    } = await supabase
-      .from("daily_checkins")
-      .select("*")
-      .eq("user_id", user.id)
-      .gte("checkin_date", startDateString)
-      .order("checkin_date", {
-        ascending: true,
-      });
-
-    if (checkinError) {
-      setError(checkinError.message);
-      setLoading(false);
-      return;
-    }
-
-    setAllCheckins(data || []);
-
-    // Current month selected by default
-    const currentMonth = `${now.getFullYear()}-${String(
-      now.getMonth() + 1
-    ).padStart(2, "0")}`;
-
-    setSelectedMonth(currentMonth);
 
     setLoading(false);
   }
 
-  function formatDateForDatabase(date) {
-    const year = date.getFullYear();
+  const monthOptions = Array.from(
+    { length: 12 },
+    (_, index) => {
+      const now = new Date();
 
-    const month = String(
-      date.getMonth() + 1
-    ).padStart(2, "0");
-
-    const day = String(
-      date.getDate()
-    ).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
-  }
-
-  function formatMonthLabel(monthValue) {
-    const [year, month] =
-      monthValue.split("-");
-
-    const date = new Date(
-      Number(year),
-      Number(month) - 1,
-      1
-    );
-
-    return date.toLocaleDateString(
-      "en-US",
-      {
-        month: "long",
-        year: "numeric",
-      }
-    );
-  }
-
-  function getMonthOptions() {
-    const options = [];
-
-    const now = new Date();
-
-    for (let i = 0; i < 12; i++) {
       const date = new Date(
         now.getFullYear(),
-        now.getMonth() - i,
+        now.getMonth() - index,
         1
       );
 
-      const monthValue = `${date.getFullYear()}-${String(
-        date.getMonth() + 1
-      ).padStart(2, "0")}`;
+      const value =
+        `${date.getFullYear()}-${String(
+          date.getMonth() + 1
+        ).padStart(2, "0")}`;
 
-      options.push(monthValue);
-    }
-
-    return options;
-  }
-
-  function getMonthRecords() {
-    return allCheckins.filter((record) => {
-      return record.checkin_date.startsWith(
-        selectedMonth
-      );
-    });
-  }
-
-  function groupRecordsByDate(records) {
-    const grouped = {};
-
-    records.forEach((record) => {
-      if (!grouped[record.checkin_date]) {
-        grouped[record.checkin_date] = [];
-      }
-
-      grouped[record.checkin_date].push(record);
-    });
-
-    return grouped;
-  }
-
-  function getRecordByType(records, type) {
-    return records.find(
-      (record) =>
-        record.checkin_type === type
-    );
-  }
-
-  function getNumericAverage(values) {
-    const validValues = values.filter(
-      (value) =>
-        typeof value === "number" &&
-        !Number.isNaN(value)
-    );
-
-    if (!validValues.length) {
-      return null;
-    }
-
-    const total = validValues.reduce(
-      (sum, value) => sum + value,
-      0
-    );
-
-    return (
-      total / validValues.length
-    ).toFixed(1);
-  }
-
-  function getMostCommonValue(values) {
-    const validValues =
-      values.filter(Boolean);
-
-    if (!validValues.length) {
-      return null;
-    }
-
-    const frequency = {};
-
-    validValues.forEach((value) => {
-      frequency[value] =
-        (frequency[value] || 0) + 1;
-    });
-
-    return Object.keys(
-      frequency
-    ).reduce((a, b) =>
-      frequency[a] >= frequency[b]
-        ? a
-        : b
-    );
-  }
-
-  function calculateReport(records) {
-    const grouped =
-      groupRecordsByDate(records);
-
-    const dates = Object.keys(grouped);
-
-    const morningRecords = records.filter(
-      (record) =>
-        record.checkin_type === "morning"
-    );
-
-    const eveningRecords = records.filter(
-      (record) =>
-        record.checkin_type === "evening"
-    );
-
-    const nightRecords = records.filter(
-      (record) =>
-        record.checkin_type === "night"
-    );
-
-    const energyAverage =
-      getNumericAverage(
-        eveningRecords.map(
-          (record) =>
-            record.energy_level
-        )
-      );
-
-    const stressAverage =
-      getNumericAverage(
-        eveningRecords.map(
-          (record) =>
-            record.stress_level
-        )
-      );
-
-    const academicPressureAverage =
-      getNumericAverage(
-        eveningRecords.map(
-          (record) =>
-            record.academic_pressure
-        )
-      );
-
-    const dayRatingAverage =
-      getNumericAverage(
-        nightRecords.map(
-          (record) =>
-            record.day_rating
-        )
-      );
-
-    const mostCommonSleepQuality =
-      getMostCommonValue(
-        morningRecords.map(
-          (record) =>
-            record.sleep_quality
-        )
-      );
-
-    return {
-      totalCheckins:
-        records.length,
-
-      activeDays:
-        dates.length,
-
-      morningCount:
-        morningRecords.length,
-
-      eveningCount:
-        eveningRecords.length,
-
-      nightCount:
-        nightRecords.length,
-
-      energyAverage,
-
-      stressAverage,
-
-      academicPressureAverage,
-
-      dayRatingAverage,
-
-      mostCommonSleepQuality,
-
-      grouped,
-    };
-  }
-
-  function calculatePatterns(records) {
-    const grouped =
-      groupRecordsByDate(records);
-
-    const dates = Object.keys(
-      grouped
-    ).sort();
-
-    const eveningRecords =
-      dates
-        .map((date) =>
-          getRecordByType(
-            grouped[date],
-            "evening"
-          )
-        )
-        .filter(Boolean);
-
-    const nightRecords =
-      dates
-        .map((date) =>
-          getRecordByType(
-            grouped[date],
-            "night"
-          )
-        )
-        .filter(Boolean);
-
-    const patterns = [];
-
-    // Need enough data before detecting
-    // repeated patterns.
-    if (eveningRecords.length < 3) {
       return {
-        patterns: [],
-        message:
-          "More check-in data is needed before SHIS can identify repeated patterns.",
+        value,
+        label:
+          getMonthLabel(value),
       };
     }
-
-    const recentEvening =
-      eveningRecords.slice(-3);
-
-    const highStress =
-      recentEvening.every(
-        (record) =>
-          record.stress_level >= 3
-      );
-
-    const highAcademicPressure =
-      recentEvening.every(
-        (record) =>
-          record.academic_pressure >= 3
-      );
-
-    const lowEnergy =
-      recentEvening.every(
-        (record) =>
-          record.energy_level <= 2
-      );
-
-    const recentNight =
-      nightRecords.slice(-3);
-
-    const lowDayRating =
-      recentNight.length >= 3 &&
-      recentNight.every(
-        (record) =>
-          record.day_rating <= 2
-      );
-
-    if (highStress) {
-      patterns.push({
-        title:
-          "Stress has remained elevated",
-
-        description:
-          "Higher stress levels were recorded across the most recent evening check-ins.",
-
-        type: "attention",
-      });
-    }
-
-    if (highAcademicPressure) {
-      patterns.push({
-        title:
-          "Academic pressure has remained elevated",
-
-        description:
-          "Academic pressure was repeatedly recorded at a higher level in recent check-ins.",
-
-        type: "attention",
-      });
-    }
-
-    if (lowEnergy) {
-      patterns.push({
-        title:
-          "Energy has remained low",
-
-        description:
-          "Lower energy levels were recorded across the most recent evening check-ins.",
-
-        type: "attention",
-      });
-    }
-
-    if (lowDayRating) {
-      patterns.push({
-        title:
-          "Day ratings have remained low",
-
-        description:
-          "The most recent night check-ins show consistently lower day ratings.",
-
-        type: "attention",
-      });
-    }
-
-    if (
-      highAcademicPressure &&
-      lowEnergy
-    ) {
-      patterns.push({
-        title:
-          "Academic pressure and low energy appear together",
-
-        description:
-          "Recent check-ins show higher academic pressure occurring alongside lower energy.",
-
-        type: "pattern",
-      });
-    }
-
-    if (
-      highStress &&
-      lowEnergy
-    ) {
-      patterns.push({
-        title:
-          "Stress and low energy appear together",
-
-        description:
-          "Recent check-ins show higher stress occurring alongside lower energy.",
-
-        type: "pattern",
-      });
-    }
-
-    if (
-      highStress &&
-      lowDayRating
-    ) {
-      patterns.push({
-        title:
-          "Stress and lower day ratings appear together",
-
-        description:
-          "Recent check-ins show higher stress occurring during days with lower ratings.",
-
-        type: "pattern",
-      });
-    }
-
-    if (
-      highAcademicPressure &&
-      lowDayRating
-    ) {
-      patterns.push({
-        title:
-          "Academic pressure and lower day ratings appear together",
-
-        description:
-          "Recent check-ins show higher academic pressure alongside lower day ratings.",
-
-        type: "pattern",
-      });
-    }
-
-    // Sleep + energy pattern
-    const recentDates =
-      dates.slice(-3);
-
-    let poorSleepLowEnergyDays = 0;
-
-    recentDates.forEach((date) => {
-      const morning =
-        getRecordByType(
-          grouped[date],
-          "morning"
-        );
-
-      const evening =
-        getRecordByType(
-          grouped[date],
-          "evening"
-        );
-
-      if (
-        morning &&
-        evening &&
-        morning.sleep_quality ===
-          "Poor" &&
-        evening.energy_level <= 2
-      ) {
-        poorSleepLowEnergyDays++;
-      }
-    });
-
-    if (
-      poorSleepLowEnergyDays >= 2
-    ) {
-      patterns.push({
-        title:
-          "Poor sleep and low energy appear together",
-
-        description:
-          "Recent days include repeated instances where poorer sleep quality was recorded alongside lower energy.",
-
-        type: "pattern",
-      });
-    }
-
-    let message =
-      "No repeated concern was detected in the available monthly data.";
-
-    if (patterns.length > 0) {
-      message =
-        "SHIS found repeated patterns in your recorded check-ins. These patterns describe your recorded wellbeing signals and are not medical diagnoses.";
-    }
-
-    return {
-      patterns,
-      message,
-    };
-  }
-
-  // Build daily trend data for charts
-  function buildTrendData(records) {
-    const grouped =
-      groupRecordsByDate(records);
-
-    return Object.keys(grouped)
-      .sort()
-      .map((date) => {
-        const dayRecords =
-          grouped[date];
-
-        const evening =
-          getRecordByType(
-            dayRecords,
-            "evening"
-          );
-
-        const night =
-          getRecordByType(
-            dayRecords,
-            "night"
-          );
-
-        const dateObject = new Date(
-          `${date}T00:00:00`
-        );
-
-        const label =
-          dateObject.toLocaleDateString(
-            "en-US",
-            {
-              day: "numeric",
-              month: "short",
-            }
-          );
-
-        return {
-          date: label,
-
-          energy:
-            evening?.energy_level ??
-            null,
-
-          stress:
-            evening?.stress_level ??
-            null,
-
-          academicPressure:
-            evening?.academic_pressure ??
-            null,
-
-          dayRating:
-            night?.day_rating ??
-            null,
-        };
-      });
-  }
+  );
 
   const monthRecords =
-    getMonthRecords();
+    allCheckins.filter(
+      (record) =>
+        record.checkin_date.startsWith(
+          selectedMonth
+        )
+    );
+
+  const previousMonth =
+    selectedMonth
+      ? getPreviousMonth(
+          selectedMonth
+        )
+      : "";
+
+  const previousMonthRecords =
+    allCheckins.filter(
+      (record) =>
+        record.checkin_date.startsWith(
+          previousMonth
+        )
+    );
 
   const report =
     calculateReport(
       monthRecords
     );
 
-  const intelligence =
-    calculatePatterns(
+  const previousReport =
+    calculateReport(
+      previousMonthRecords
+    );
+
+  const patterns =
+    buildReportPatterns(
       monthRecords
     );
 
@@ -617,64 +631,101 @@ function Report() {
       monthRecords
     );
 
-  const monthOptions =
-    getMonthOptions();
+  const monthlyHistory =
+    buildMonthlyHistory(
+      allCheckins
+    );
 
-  const hasSelectedMonthData =
-    monthRecords.length > 0;
+  // Central intelligence engine
+  const persistentPatterns =
+    detectPersistentPatterns(
+      allCheckins
+    );
+
+  const persistentInsight =
+    buildPersistentInsight(
+      persistentPatterns
+    );
+
+  const contextPatterns =
+    persistentPatterns.filter(
+      (pattern) =>
+        pattern.category === "context"
+    );
+
+  const timeAwareInsight =
+    buildTimeAwareInsight(
+      allCheckins,
+      persistentPatterns
+    );
+
+  const comparisonData =
+    getComparisonData(
+      report,
+      previousReport
+    );
+
+  const hasPreviousMonthData =
+    previousMonthRecords.length > 0;
+
+  // ==========================================================
+  // LOADING
+  // ==========================================================
 
   if (loading) {
     return (
-      <section className="report-page">
+      <div className="report-page">
         <div className="content-card">
           <p>
-            Loading monthly report...
+            Loading your monthly report...
           </p>
         </div>
-      </section>
+      </div>
     );
   }
+
+  // ==========================================================
+  // ERROR
+  // ==========================================================
 
   if (error) {
     return (
-      <section className="report-page">
-        <div className="content-card">
-          <h2>
-            Unable to load report
-          </h2>
-
-          <p className="error-message">
-            {error}
-          </p>
+      <div className="report-page">
+        <div className="error-message">
+          {error}
         </div>
-      </section>
+      </div>
     );
   }
 
+  // ==========================================================
+  // MAIN REPORT
+  // ==========================================================
+
   return (
-    <section className="report-page">
+    <div className="report-page">
 
       {/* HEADER */}
 
       <div className="report-header">
         <div>
-          <span className="section-eyebrow">
-            SHIS MONTHLY REPORT
+          <span className="eyebrow">
+            SHIS REPORT
           </span>
 
           <h1>
-            Your wellbeing over time
+            Monthly Report
           </h1>
 
           <p className="page-subtitle">
-            Review your recorded wellbeing
-            patterns for a selected month.
+            A summary of your recorded
+            wellbeing patterns over time.
           </p>
         </div>
 
         <div className="report-month-selector">
           <label htmlFor="report-month">
-            Report month
+            View month
           </label>
 
           <select
@@ -689,12 +740,10 @@ function Report() {
             {monthOptions.map(
               (month) => (
                 <option
-                  key={month}
-                  value={month}
+                  key={month.value}
+                  value={month.value}
                 >
-                  {formatMonthLabel(
-                    month
-                  )}
+                  {month.label}
                 </option>
               )
             )}
@@ -702,114 +751,54 @@ function Report() {
         </div>
       </div>
 
-      {/* REPORT PERIOD */}
-
-      <div className="content-card">
-        <div className="report-section-header">
-          <div>
-            <h2>
-              {formatMonthLabel(
-                selectedMonth
-              )}
-            </h2>
-
-            <p className="card-description">
-              Monthly wellbeing summary
-            </p>
+      {monthRecords.length === 0 ? (
+        <div className="content-card report-empty-state">
+          <div className="report-empty-icon">
+            📊
           </div>
+
+          <h2>
+            No check-ins recorded
+          </h2>
+
+          <p>
+            There is no wellbeing data
+            available for{" "}
+            {getMonthLabel(
+              selectedMonth
+            )}
+            .
+          </p>
+
+          <span>
+            Complete your daily check-ins
+            to build your health history.
+          </span>
         </div>
-
-        <div className="report-period">
-          <div>
-            <span>
-              Check-in days
-            </span>
-
-            <strong>
-              {report.activeDays}
-            </strong>
-          </div>
-
-          <div>
-            <span>
-              Total check-ins
-            </span>
-
-            <strong>
-              {report.totalCheckins}
-            </strong>
-          </div>
-        </div>
-      </div>
-
-      {/* NO DATA */}
-
-      {!hasSelectedMonthData && (
-        <div className="content-card">
-          <div className="report-empty-state">
-            <div className="report-empty-icon">
-              📅
-            </div>
-
-            <h2>
-              No check-in data yet
-            </h2>
-
-            <p>
-              You do not have any recorded
-              check-ins for{" "}
-              <strong>
-                {formatMonthLabel(
-                  selectedMonth
-                )}
-              </strong>
-              .
-            </p>
-
-            <span>
-              Complete your daily check-ins
-              to build your wellbeing history.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {hasSelectedMonthData && (
+      ) : (
         <>
-
-          {/* CHECK-IN OVERVIEW */}
+          {/* REPORT OVERVIEW */}
 
           <div className="content-card">
             <div className="report-section-header">
               <div>
                 <h2>
-                  Check-in overview
+                  Monthly Overview
                 </h2>
 
                 <p className="card-description">
-                  How consistently you recorded
-                  your wellbeing this month.
+                  Your recorded activity
+                  during{" "}
+                  {getMonthLabel(
+                    selectedMonth
+                  )}
+                  .
                 </p>
               </div>
             </div>
 
-            <div className="report-metrics-grid">
-
-              <div className="report-metric">
-                <span>
-                  Total check-ins
-                </span>
-
-                <strong>
-                  {report.totalCheckins}
-                </strong>
-
-                <small>
-                  All recorded responses
-                </small>
-              </div>
-
-              <div className="report-metric">
+            <div className="report-period">
+              <div>
                 <span>
                   Active days
                 </span>
@@ -817,66 +806,32 @@ function Report() {
                 <strong>
                   {report.activeDays}
                 </strong>
-
-                <small>
-                  Days with at least one
-                  check-in
-                </small>
               </div>
 
-              <div className="report-metric">
+              <div>
                 <span>
-                  Morning
+                  Total check-ins
                 </span>
 
                 <strong>
-                  {report.morningCount}
+                  {report.totalCheckins}
                 </strong>
-
-                <small>
-                  Morning check-ins
-                </small>
               </div>
-
-              <div className="report-metric">
-                <span>
-                  Evening
-                </span>
-
-                <strong>
-                  {report.eveningCount}
-                </strong>
-
-                <small>
-                  Evening check-ins
-                </small>
-              </div>
-
-            </div>
-
-            <div className="report-highlight">
-              <span>
-                Night check-ins
-              </span>
-
-              <strong>
-                {report.nightCount}
-              </strong>
             </div>
           </div>
 
-          {/* WELLBEING PATTERNS */}
+          {/* METRICS */}
 
           <div className="content-card">
             <div className="report-section-header">
               <div>
                 <h2>
-                  Wellbeing patterns
+                  Wellbeing Snapshot
                 </h2>
 
                 <p className="card-description">
-                  Averages calculated from your
-                  recorded check-ins.
+                  Monthly averages from
+                  your recorded check-ins.
                 </p>
               </div>
             </div>
@@ -885,93 +840,445 @@ function Report() {
 
               <div className="report-metric">
                 <span>
-                  Average energy
+                  Energy
                 </span>
 
                 <strong>
-                  {report.energyAverage ??
-                    "—"}
-
-                  {report.energyAverage &&
-                    "/5"}
+                  {report.energyAverage !==
+                  null
+                    ? report.energyAverage.toFixed(
+                        1
+                      )
+                    : "—"}
                 </strong>
 
                 <small>
-                  Evening check-ins
+                  out of 5
                 </small>
               </div>
 
               <div className="report-metric">
                 <span>
-                  Average stress
+                  Stress
                 </span>
 
                 <strong>
-                  {report.stressAverage ??
-                    "—"}
-
-                  {report.stressAverage &&
-                    "/4"}
+                  {report.stressAverage !==
+                  null
+                    ? report.stressAverage.toFixed(
+                        1
+                      )
+                    : "—"}
                 </strong>
 
                 <small>
-                  Evening check-ins
+                  out of 4
                 </small>
               </div>
 
               <div className="report-metric">
                 <span>
-                  Academic pressure
+                  Academic Pressure
                 </span>
 
                 <strong>
-                  {report.academicPressureAverage ??
-                    "—"}
-
-                  {report.academicPressureAverage &&
-                    "/4"}
+                  {report.academicPressureAverage !==
+                  null
+                    ? report.academicPressureAverage.toFixed(
+                        1
+                      )
+                    : "—"}
                 </strong>
 
                 <small>
-                  Evening check-ins
+                  out of 4
                 </small>
               </div>
 
               <div className="report-metric">
                 <span>
-                  Average day rating
+                  Day Rating
                 </span>
 
                 <strong>
-                  {report.dayRatingAverage ??
-                    "—"}
-
-                  {report.dayRatingAverage &&
-                    "/5"}
+                  {report.dayRatingAverage !==
+                  null
+                    ? report.dayRatingAverage.toFixed(
+                        1
+                      )
+                    : "—"}
                 </strong>
 
                 <small>
-                  Night check-ins
+                  out of 5
                 </small>
               </div>
 
             </div>
           </div>
 
-          {/* VISUAL TRENDS */}
+          {/* MONTH TO MONTH COMPARISON */}
 
           <div className="content-card">
             <div className="report-section-header">
               <div>
                 <h2>
-                  Wellbeing trends
+                  Month-to-Month Comparison
                 </h2>
 
                 <p className="card-description">
-                  See how your recorded
-                  wellbeing signals changed
-                  throughout the selected
-                  month.
+                  How your recorded averages
+                  changed compared with the
+                  previous month.
+                </p>
+              </div>
+            </div>
+
+            {!hasPreviousMonthData ? (
+              <div className="report-comparison-empty">
+                <div className="report-comparison-empty-icon">
+                  📅
+                </div>
+
+                <div>
+                  <strong>
+                    No comparable data yet
+                  </strong>
+
+                  <p>
+                    There is no recorded data
+                    available for{" "}
+                    {getMonthLabel(
+                      previousMonth
+                    )}
+                    .
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="report-comparison-grid">
+                {comparisonData.map(
+                  (item) => {
+                    const comparison =
+                      item.comparison;
+
+                    return (
+                      <div
+                        className="report-comparison-card"
+                        key={item.key}
+                      >
+                        <div className="report-comparison-title">
+                          <span>
+                            {item.label}
+                          </span>
+                        </div>
+
+                        <div className="report-comparison-values">
+                          <div>
+                            <small>
+                              Previous
+                            </small>
+
+                            <strong>
+                              {item.previous !==
+                              null
+                                ? Number(
+                                    item.previous
+                                  ).toFixed(
+                                    1
+                                  )
+                                : "—"}
+                            </strong>
+                          </div>
+
+                          <div>
+                            <small>
+                              Current
+                            </small>
+
+                            <strong>
+                              {item.current !==
+                              null
+                                ? Number(
+                                    item.current
+                                  ).toFixed(
+                                    1
+                                  )
+                                : "—"}
+                            </strong>
+                          </div>
+                        </div>
+
+                        {comparison ? (
+                          <div
+                            className={`report-comparison-change ${comparison.direction}`}
+                          >
+                            <strong>
+                              {comparison.difference >
+                              0
+                                ? "+"
+                                : ""}
+
+                              {comparison.difference.toFixed(
+                                1
+                              )}
+                            </strong>
+
+                            <span>
+                              {comparison.label}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="report-comparison-change similar">
+                            <strong>
+                              —
+                            </strong>
+
+                            <span>
+                              Not enough data
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* LONG-TERM HISTORY */}
+
+          <div className="content-card">
+            <div className="report-section-header">
+              <div>
+                <h2>
+                  Long-Term Wellbeing History
+                </h2>
+
+                <p className="card-description">
+                  Monthly wellbeing averages
+                  across your recorded history.
+                </p>
+              </div>
+            </div>
+
+            {monthlyHistory.length ===
+            0 ? (
+              <div className="report-comparison-empty">
+                <div className="report-comparison-empty-icon">
+                  📈
+                </div>
+
+                <div>
+                  <strong>
+                    More history is needed
+                  </strong>
+
+                  <p>
+                    Continue completing
+                    your daily check-ins
+                    to build a longer-term
+                    wellbeing history.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="report-long-term-chart">
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                >
+                  <LineChart
+                    data={monthlyHistory}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                    />
+
+                    <XAxis
+                      dataKey="label"
+                    />
+
+                    <YAxis
+                      domain={[1, 5]}
+                    />
+
+                    <Tooltip />
+
+                    <Line
+                      type="monotone"
+                      dataKey="energy"
+                      name="Energy"
+                      strokeWidth={3}
+                      connectNulls={false}
+                    />
+
+                    <Line
+                      type="monotone"
+                      dataKey="dayRating"
+                      name="Day Rating"
+                      strokeWidth={3}
+                      connectNulls={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* PERSISTENT PATTERNS */}
+
+          <div className="content-card">
+            <div className="report-section-header">
+              <div>
+                <h2>
+                  Persistent Patterns
+                </h2>
+
+                <p className="card-description">
+                  Patterns that appeared
+                  across multiple months
+                  of recorded wellbeing
+                  data.
+                </p>
+              </div>
+            </div>
+
+            {persistentPatterns.length ===
+            0 ? (
+              <div className="report-highlight">
+                <span>
+                  SHIS observation
+                </span>
+
+                <strong>
+                  No persistent pattern
+                  detected yet
+                </strong>
+              </div>
+            ) : (
+              <div className="report-pattern-list">
+                {persistentPatterns.map(
+                  (pattern, index) => (
+                    <div
+                      className="report-pattern-card"
+                      key={index}
+                    >
+                      <div className="report-pattern-icon">
+                        {pattern.icon}
+                      </div>
+
+                      <div>
+                        <h3>
+                          {pattern.title}
+                        </h3>
+
+                        <p>
+                          {pattern.description}
+                        </p>
+
+                        <small className="report-pattern-months">
+                          Observed across{" "}
+                          {pattern.months.length}{" "}
+                          month
+                          {pattern.months.length !==
+                          1
+                            ? "s"
+                            : ""}
+                        </small>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* CONTEXT-AWARE INTELLIGENCE */}
+
+          <div className="dashboard-insights-section">
+            <div className="report-section-header">
+              <div>
+                <h2>
+                  🔗 Context-Aware Patterns
+                </h2>
+
+                <p className="card-description">
+                  SHIS looks at related
+                  wellbeing signals together,
+                  rather than viewing each
+                  measure separately.
+                </p>
+              </div>
+            </div>
+
+            {contextPatterns.length ===
+            0 ? (
+              <div className="dashboard-note">
+                <strong>
+                  No recurring relationship
+                  detected yet
+                </strong>
+
+                <p>
+                  SHIS needs more repeated
+                  monthly data before it can
+                  identify relationships
+                  between different wellbeing
+                  signals.
+                </p>
+              </div>
+            ) : (
+              <div className="report-pattern-list">
+                {contextPatterns.map(
+                  (pattern, index) => (
+                    <div
+                      className="report-pattern-card"
+                      key={index}
+                    >
+                      <div className="report-pattern-icon">
+                        {pattern.icon}
+                      </div>
+
+                      <div>
+                        <h3>
+                          {pattern.title}
+                        </h3>
+
+                        <p>
+                          {pattern.description}
+                        </p>
+
+                        <small className="report-pattern-months">
+                          Observed across{" "}
+                          {pattern.months.length}{" "}
+                          month
+                          {pattern.months.length !==
+                          1
+                            ? "s"
+                            : ""}
+                        </small>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* TREND CHARTS */}
+
+          <div className="content-card">
+            <div className="report-section-header">
+              <div>
+                <h2>
+                  Wellbeing Trends
+                </h2>
+
+                <p className="card-description">
+                  Daily recorded values across
+                  the selected month.
                 </p>
               </div>
             </div>
@@ -982,21 +1289,19 @@ function Report() {
 
               <div className="report-chart-card">
                 <div className="report-chart-header">
-                  <div>
-                    <h3>
-                      Energy
-                    </h3>
+                  <h3>
+                    Energy
+                  </h3>
 
-                    <span>
-                      Evening check-ins · 1–5
-                    </span>
-                  </div>
+                  <span>
+                    Daily evening check-ins
+                  </span>
                 </div>
 
                 <div className="report-chart">
                   <ResponsiveContainer
                     width="100%"
-                    height={260}
+                    height="100%"
                   >
                     <LineChart
                       data={trendData}
@@ -1019,7 +1324,6 @@ function Report() {
                         type="monotone"
                         dataKey="energy"
                         strokeWidth={3}
-                        dot={{ r: 4 }}
                         connectNulls={false}
                       />
                     </LineChart>
@@ -1031,21 +1335,19 @@ function Report() {
 
               <div className="report-chart-card">
                 <div className="report-chart-header">
-                  <div>
-                    <h3>
-                      Stress
-                    </h3>
+                  <h3>
+                    Stress
+                  </h3>
 
-                    <span>
-                      Evening check-ins · 1–4
-                    </span>
-                  </div>
+                  <span>
+                    Daily evening check-ins
+                  </span>
                 </div>
 
                 <div className="report-chart">
                   <ResponsiveContainer
                     width="100%"
-                    height={260}
+                    height="100%"
                   >
                     <LineChart
                       data={trendData}
@@ -1068,7 +1370,6 @@ function Report() {
                         type="monotone"
                         dataKey="stress"
                         strokeWidth={3}
-                        dot={{ r: 4 }}
                         connectNulls={false}
                       />
                     </LineChart>
@@ -1080,21 +1381,19 @@ function Report() {
 
               <div className="report-chart-card">
                 <div className="report-chart-header">
-                  <div>
-                    <h3>
-                      Academic pressure
-                    </h3>
+                  <h3>
+                    Academic Pressure
+                  </h3>
 
-                    <span>
-                      Evening check-ins · 1–4
-                    </span>
-                  </div>
+                  <span>
+                    Daily evening check-ins
+                  </span>
                 </div>
 
                 <div className="report-chart">
                   <ResponsiveContainer
                     width="100%"
-                    height={260}
+                    height="100%"
                   >
                     <LineChart
                       data={trendData}
@@ -1117,7 +1416,6 @@ function Report() {
                         type="monotone"
                         dataKey="academicPressure"
                         strokeWidth={3}
-                        dot={{ r: 4 }}
                         connectNulls={false}
                       />
                     </LineChart>
@@ -1129,21 +1427,19 @@ function Report() {
 
               <div className="report-chart-card">
                 <div className="report-chart-header">
-                  <div>
-                    <h3>
-                      Day rating
-                    </h3>
+                  <h3>
+                    Day Rating
+                  </h3>
 
-                    <span>
-                      Night check-ins · 1–5
-                    </span>
-                  </div>
+                  <span>
+                    Daily night check-ins
+                  </span>
                 </div>
 
                 <div className="report-chart">
                   <ResponsiveContainer
                     width="100%"
-                    height={260}
+                    height="100%"
                   >
                     <LineChart
                       data={trendData}
@@ -1166,7 +1462,6 @@ function Report() {
                         type="monotone"
                         dataKey="dayRating"
                         strokeWidth={3}
-                        dot={{ r: 4 }}
                         connectNulls={false}
                       />
                     </LineChart>
@@ -1177,72 +1472,44 @@ function Report() {
             </div>
           </div>
 
-          {/* SLEEP */}
+          {/* CENTRAL SHIS REPEATED PATTERNS */}
 
           <div className="content-card">
             <div className="report-section-header">
               <div>
                 <h2>
-                  Sleep pattern
+                  Repeated Wellbeing Patterns
                 </h2>
 
                 <p className="card-description">
-                  Based on your morning
-                  check-ins.
+                  Patterns detected by the
+                  central SHIS intelligence
+                  engine.
                 </p>
               </div>
             </div>
 
-            <div className="report-highlight">
-              <span>
-                Most frequently recorded
-                sleep quality
-              </span>
-
-              <strong>
-                {report.mostCommonSleepQuality ??
-                  "Not enough data"}
-              </strong>
-            </div>
-          </div>
-
-          {/* SHIS INTELLIGENCE */}
-
-          <div className="dashboard-insights-section">
-            <div className="dashboard-insights-header">
-              <div>
-                <span className="section-eyebrow">
-                  SHIS INTELLIGENCE
+            {patterns.length === 0 ? (
+              <div className="report-highlight">
+                <span>
+                  SHIS observation
                 </span>
 
-                <h2>
-                  What SHIS noticed
-                </h2>
+                <strong>
+                  No repeated concern
+                  detected
+                </strong>
               </div>
-            </div>
-
-            <p className="dashboard-note">
-              {intelligence.message}
-            </p>
-
-            {intelligence.patterns
-              .length > 0 && (
+            ) : (
               <div className="report-pattern-list">
-
-                {intelligence.patterns.map(
-                  (
-                    pattern,
-                    index
-                  ) => (
+                {patterns.map(
+                  (pattern, index) => (
                     <div
-                      className="content-card report-pattern-card"
+                      className="report-pattern-card"
                       key={index}
                     >
                       <div className="report-pattern-icon">
-                        {pattern.type ===
-                        "attention"
-                          ? "🔎"
-                          : "🔗"}
+                        {pattern.icon}
                       </div>
 
                       <div>
@@ -1251,44 +1518,190 @@ function Report() {
                         </h3>
 
                         <p>
-                          {
-                            pattern.description
-                          }
+                          {pattern.description}
                         </p>
                       </div>
                     </div>
                   )
                 )}
-
               </div>
             )}
           </div>
 
-          {/* NEXT STEPS */}
+          {/* SLEEP */}
 
           <div className="content-card">
             <div className="report-section-header">
               <div>
                 <h2>
-                  Suggested next step
+                  Sleep Snapshot
                 </h2>
 
                 <p className="card-description">
-                  Simple actions that improve
-                  the quality of your SHIS
-                  history.
+                  Most frequently recorded
+                  sleep quality during the
+                  selected month.
                 </p>
               </div>
             </div>
 
             <div className="report-highlight">
               <span>
-                Keep building your history
+                Most common sleep quality
               </span>
 
               <strong>
-                Continue completing your
-                daily check-ins consistently.
+                {report.mostCommonSleepQuality}
+              </strong>
+            </div>
+          </div>
+
+          {/* TIME-AWARE INTELLIGENCE */}
+
+          <div className="dashboard-insights-section">
+            <div className="report-section-header">
+              <div>
+                <h2>
+                  ⏱️ What SHIS is noticing recently
+                </h2>
+
+                <p className="card-description">
+                  SHIS looks at your most recent
+                  recorded days and compares them
+                  with earlier data when enough
+                  information is available.
+                </p>
+              </div>
+            </div>
+
+            <div className="dashboard-note">
+              <strong>
+                {timeAwareInsight.title}
+              </strong>
+
+              <p>
+                {timeAwareInsight.description}
+              </p>
+            </div>
+
+            <div className="report-highlight">
+              <span>
+                Suggested next step
+              </span>
+
+              <strong>
+                {timeAwareInsight.nextStep}
+              </strong>
+            </div>
+          </div>
+
+          {/* SHIS INTELLIGENCE */}
+
+          <div className="dashboard-insights-section">
+            <div className="report-section-header">
+              <div>
+                <h2>
+                  🧠 SHIS Intelligence
+                </h2>
+
+                <p className="card-description">
+                  SHIS combines repeated
+                  patterns, their relationships,
+                  and recent changes to build
+                  a longer-term picture.
+                </p>
+              </div>
+            </div>
+
+            <div className="dashboard-note">
+              <strong>
+                {persistentInsight.title}
+              </strong>
+
+              <p>
+                {persistentInsight.description}
+              </p>
+            </div>
+
+            {contextPatterns.length >
+              0 && (
+                <div className="report-highlight">
+                  <span>
+                    Context-aware observation
+                  </span>
+
+                  <strong>
+                    {contextPatterns.length}{" "}
+                    recurring{" "}
+                    {contextPatterns.length ===
+                    1
+                      ? "relationship"
+                      : "relationships"}{" "}
+                    detected
+                  </strong>
+                </div>
+              )}
+
+            {persistentPatterns.length >
+              0 && (
+                <div className="report-highlight">
+                  <span>
+                    Long-term observation
+                  </span>
+
+                  <strong>
+                    {persistentPatterns.length}{" "}
+                    recurring{" "}
+                    {persistentPatterns.length ===
+                    1
+                      ? "pattern"
+                      : "patterns"}{" "}
+                    detected
+                  </strong>
+                </div>
+              )}
+
+            <div className="dashboard-note">
+              <strong>
+                How SHIS interprets this
+              </strong>
+
+              <p>
+                These observations are based
+                on repeated responses recorded
+                over time. When two signals
+                appear together repeatedly,
+                SHIS reports that relationship
+                without assuming that one
+                factor caused the other.
+              </p>
+            </div>
+          </div>
+
+          {/* NEXT STEP */}
+
+          <div className="content-card">
+            <div className="report-section-header">
+              <div>
+                <h2>
+                  Suggested Next Step
+                </h2>
+
+                <p className="card-description">
+                  Continue recording your
+                  wellbeing consistently.
+                </p>
+              </div>
+            </div>
+
+            <div className="report-highlight">
+              <span>
+                SHIS recommendation
+              </span>
+
+              <strong>
+                Keep completing your daily
+                check-ins
               </strong>
             </div>
           </div>
@@ -1296,17 +1709,14 @@ function Report() {
           {/* DISCLAIMER */}
 
           <div className="dashboard-note">
-            SHIS monthly reports are intended
-            for wellbeing awareness and
-            self-reflection. They do not
-            diagnose medical or mental health
-            conditions.
+            SHIS provides informational
+            wellbeing insights based on the
+            information you record. It is not
+            a diagnostic or medical system.
           </div>
-
         </>
       )}
-
-    </section>
+    </div>
   );
 }
 

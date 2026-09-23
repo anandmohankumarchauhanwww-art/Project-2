@@ -2,15 +2,16 @@ import { useEffect, useState } from "react";
 
 import { supabase } from "../lib/supabaseClient";
 
-import TrendInsights from "../components/TrendInsights";
+import {
+  detectTrendInsights,
+  getPrimaryInsight,
+} from "../utils/shisIntelligence";
 
 function Dashboard({ setActivePage }) {
   const [studentName, setStudentName] = useState("Student");
-
   const [checkins, setCheckins] = useState([]);
-
+  const [primaryInsight, setPrimaryInsight] = useState(null);
   const [loading, setLoading] = useState(true);
-
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
@@ -30,7 +31,6 @@ function Dashboard({ setActivePage }) {
       setErrorMessage(
         "Your session has expired. Please login again."
       );
-
       setLoading(false);
       return;
     }
@@ -67,8 +67,12 @@ function Dashboard({ setActivePage }) {
       .from("daily_checkins")
       .select("*")
       .eq("user_id", user.id)
-      .order("checkin_date", { ascending: false })
-      .order("created_at", { ascending: false });
+      .order("checkin_date", {
+        ascending: false,
+      })
+      .order("created_at", {
+        ascending: false,
+      });
 
     if (error) {
       console.error("Dashboard error:", error);
@@ -81,7 +85,21 @@ function Dashboard({ setActivePage }) {
       return;
     }
 
-    setCheckins(data || []);
+    const loadedCheckins = data || [];
+
+    setCheckins(loadedCheckins);
+
+    // -----------------------------------------
+    // CENTRAL SHIS INTELLIGENCE
+    // -----------------------------------------
+
+    const insights =
+      detectTrendInsights(loadedCheckins);
+
+    const primary =
+      getPrimaryInsight(insights);
+
+    setPrimaryInsight(primary);
 
     setLoading(false);
   }
@@ -128,7 +146,8 @@ function Dashboard({ setActivePage }) {
 
   function getLatestRecord(type) {
     return checkins.find(
-      (record) => record.checkin_type === type
+      (record) =>
+        record.checkin_type === type
     );
   }
 
@@ -156,11 +175,13 @@ function Dashboard({ setActivePage }) {
       <div className="dashboard-loading">
         <div className="loading-icon">📊</div>
 
-        <h2>Preparing your dashboard...</h2>
+        <h2>
+          Preparing your dashboard...
+        </h2>
 
         <p>
-          Bringing together your latest wellbeing
-          information.
+          Bringing together your latest
+          wellbeing information.
         </p>
       </div>
     );
@@ -173,7 +194,9 @@ function Dashboard({ setActivePage }) {
   if (errorMessage) {
     return (
       <div className="dashboard-error">
-        <h2>Could not load your dashboard</h2>
+        <h2>
+          Could not load your dashboard
+        </h2>
 
         <p>{errorMessage}</p>
       </div>
@@ -205,9 +228,7 @@ function Dashboard({ setActivePage }) {
       {/* HERO / WELCOME */}
 
       <section className="welcome-section">
-
         <div>
-
           <div className="small-heading">
             STUDENT HEALTH INTELLIGENCE SYSTEM
           </div>
@@ -219,7 +240,6 @@ function Dashboard({ setActivePage }) {
           <p className="page-subtitle">
             Your wellbeing journey, understood over time.
           </p>
-
         </div>
 
         <button
@@ -230,7 +250,6 @@ function Dashboard({ setActivePage }) {
         >
           + Today's Check-in
         </button>
-
       </section>
 
 
@@ -239,9 +258,7 @@ function Dashboard({ setActivePage }) {
       <section className="content-card dashboard-checkin-card">
 
         <div className="dashboard-section-header">
-
           <div>
-
             <h2>
               📋 Today's wellbeing journey
             </h2>
@@ -250,15 +267,12 @@ function Dashboard({ setActivePage }) {
               Three small check-ins help SHIS understand
               how your day changes from morning to night.
             </p>
-
           </div>
 
           <span className="dashboard-progress-badge">
             {completedToday}/3 completed
           </span>
-
         </div>
-
 
         <div className="dashboard-checkin-grid">
 
@@ -267,13 +281,11 @@ function Dashboard({ setActivePage }) {
               today.morning ? "completed" : ""
             }`}
           >
-
             <div className="checkin-item-icon">
               {today.morning ? "✓" : "🌅"}
             </div>
 
             <div>
-
               <strong>Morning</strong>
 
               <span>
@@ -281,9 +293,7 @@ function Dashboard({ setActivePage }) {
                   ? "Completed"
                   : "Start your day"}
               </span>
-
             </div>
-
           </div>
 
 
@@ -292,13 +302,11 @@ function Dashboard({ setActivePage }) {
               today.evening ? "completed" : ""
             }`}
           >
-
             <div className="checkin-item-icon">
               {today.evening ? "✓" : "🌇"}
             </div>
 
             <div>
-
               <strong>Evening</strong>
 
               <span>
@@ -306,9 +314,7 @@ function Dashboard({ setActivePage }) {
                   ? "Completed"
                   : "Check in after your day"}
               </span>
-
             </div>
-
           </div>
 
 
@@ -317,13 +323,11 @@ function Dashboard({ setActivePage }) {
               today.night ? "completed" : ""
             }`}
           >
-
             <div className="checkin-item-icon">
               {today.night ? "✓" : "🌙"}
             </div>
 
             <div>
-
               <strong>Night</strong>
 
               <span>
@@ -331,13 +335,10 @@ function Dashboard({ setActivePage }) {
                   ? "Completed"
                   : "Wrap up your day"}
               </span>
-
             </div>
-
           </div>
 
         </div>
-
 
         {completedToday < 3 && (
           <button
@@ -360,7 +361,6 @@ function Dashboard({ setActivePage }) {
         <div className="dashboard-section-header">
 
           <div>
-
             <h2>
               🌿 Your latest wellbeing
             </h2>
@@ -369,7 +369,6 @@ function Dashboard({ setActivePage }) {
               A quick view of your most recent check-in
               signals.
             </p>
-
           </div>
 
           <button
@@ -387,7 +386,6 @@ function Dashboard({ setActivePage }) {
         <div className="dashboard-metrics-grid">
 
           <div className="dashboard-metric">
-
             <span>⚡ Energy</span>
 
             <strong>
@@ -401,12 +399,10 @@ function Dashboard({ setActivePage }) {
             <small>
               Latest evening check-in
             </small>
-
           </div>
 
 
           <div className="dashboard-metric">
-
             <span>🧠 Stress</span>
 
             <strong>
@@ -420,13 +416,13 @@ function Dashboard({ setActivePage }) {
             <small>
               Latest evening check-in
             </small>
-
           </div>
 
 
           <div className="dashboard-metric">
-
-            <span>📚 Academic pressure</span>
+            <span>
+              📚 Academic pressure
+            </span>
 
             <strong>
               {eveningRecord?.academic_pressure ?? "—"}
@@ -439,12 +435,10 @@ function Dashboard({ setActivePage }) {
             <small>
               Latest evening check-in
             </small>
-
           </div>
 
 
           <div className="dashboard-metric">
-
             <span>⭐ Day rating</span>
 
             <strong>
@@ -458,7 +452,6 @@ function Dashboard({ setActivePage }) {
             <small>
               Latest night check-in
             </small>
-
           </div>
 
         </div>
@@ -487,7 +480,48 @@ function Dashboard({ setActivePage }) {
 
         </div>
 
-        <TrendInsights />
+
+        {primaryInsight && (
+
+          <div
+            className={`dashboard-primary-insight ${
+              primaryInsight.type
+            }`}
+          >
+
+            <div className="dashboard-primary-insight-icon">
+              {primaryInsight.icon}
+            </div>
+
+
+            <div className="dashboard-primary-insight-content">
+
+              <div className="dashboard-primary-insight-label">
+                Recent SHIS observation
+              </div>
+
+              <h3>
+                {primaryInsight.title}
+              </h3>
+
+              <p>
+                {primaryInsight.message}
+              </p>
+
+              <button
+                className="dashboard-text-button"
+                onClick={() =>
+                  setActivePage("report")
+                }
+              >
+                View full report →
+              </button>
+
+            </div>
+
+          </div>
+
+        )}
 
       </section>
 
@@ -504,39 +538,32 @@ function Dashboard({ setActivePage }) {
             Based on your latest morning check-in.
           </p>
 
-
           <div className="dashboard-detail-grid">
 
             <div className="dashboard-detail">
-
               <span>Sleep duration</span>
 
               <strong>
                 {morningRecord?.sleep_duration || "—"}
               </strong>
-
             </div>
 
 
             <div className="dashboard-detail">
-
               <span>Sleep quality</span>
 
               <strong>
                 {morningRecord?.sleep_quality || "—"}
               </strong>
-
             </div>
 
 
             <div className="dashboard-detail">
-
               <span>Feeling rested</span>
 
               <strong>
                 {morningRecord?.rested_feeling || "—"}
               </strong>
-
             </div>
 
           </div>
@@ -552,32 +579,26 @@ function Dashboard({ setActivePage }) {
             Your collected wellbeing information.
           </p>
 
-
           <div className="dashboard-activity">
 
             <div>
-
               <span>Total check-ins</span>
 
               <strong>
                 {checkins.length}
               </strong>
-
             </div>
 
 
             <div>
-
               <span>Latest activity</span>
 
               <strong>
                 {formatDate(latestDate)}
               </strong>
-
             </div>
 
           </div>
-
 
           <button
             className="dashboard-secondary-button"
